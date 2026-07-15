@@ -15,8 +15,8 @@ const rennySeated = {
 const rennyStanding = {
   src: "/images/renny-portrait-standing.jpg",
   alt: "Renny standing outdoors in a patterned dress",
-  width: 827,
-  height: 1240,
+  width: 1033,
+  height: 1600,
   position: "top" as const,
 };
 
