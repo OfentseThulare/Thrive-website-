@@ -8,8 +8,8 @@ import { legalRawPages } from "./legal-seed.ts";
 const rennySeated = {
   src: "/images/renny-portrait-seated.jpg",
   alt: "Renny smiling while seated beside a large window",
-  width: 2048,
-  height: 2048,
+  width: 3628,
+  height: 3628,
   position: "centre" as const,
 };
 
@@ -45,6 +45,118 @@ const nourishmentStillLife = {
   position: "centre" as const,
 };
 
+const coachingDesk = {
+  src: "/images/ai-coaching-desk.webp",
+  alt: "A quiet coaching desk with a notebook, cup and laptop in soft daylight",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const counsellingRoom = {
+  src: "/images/ai-counselling-room.webp",
+  alt: "Two empty chairs in a calm counselling room with teal walls and soft light",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const preventionHabits = {
+  src: "/images/ai-prevention-habits.webp",
+  alt: "Walking shoes, water and fresh greens arranged in a calm home setting",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const pemsGems = {
+  src: "/images/ai-pems-gems.webp",
+  alt: "Four smooth natural stones on pale linen for whole person reflection",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const bookingCalendar = {
+  src: "/images/ai-booking-calendar.webp",
+  alt: "A blank calendar, pen, tea cup and phone on a warm wooden desk",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const researchReading = {
+  src: "/images/ai-research-reading.webp",
+  alt: "An open book with note tabs, tea and a pencil beside a bright window",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const caregiverMugs = {
+  src: "/images/ai-caregiver-mugs.webp",
+  alt: "Two mugs, a folded blanket and plants in a quiet sunlit room",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const appointmentNotes = {
+  src: "/images/ai-appointment-notes.webp",
+  alt: "A blank notepad, pen, folder, eyeglasses and tea on a pale desk",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const mindBodyCalm = {
+  src: "/images/ai-mind-body-calm.webp",
+  alt: "A woven mat, cushion, plant and ceramic bowl in a calm room",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const permaCards = {
+  src: "/images/ai-perma-cards.webp",
+  alt: "Blank reflection cards, a journal, pencil, flowers and tea on linen",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const openGarden = {
+  src: "/images/ai-open-garden.webp",
+  alt: "An open doorway leading from a teal room into a small green garden",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const routinePlanning = {
+  src: "/images/ai-routine-planning.webp",
+  alt: "A small clock, blank reminder cards, pen and water glass on a bright table",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const privateSession = {
+  src: "/images/ai-private-session.webp",
+  alt: "Headphones, a closed laptop, notebook and water glass beside a window",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
+const financialPlanning = {
+  src: "/images/ai-financial-planning.webp",
+  alt: "A blank envelope, calculator, notebook, pen and tea on a wooden table",
+  width: 4096,
+  height: 2737,
+  position: "centre" as const,
+};
+
 const rawPages: PageContentInput[] = [
   {
     slug: "home",
@@ -67,10 +179,10 @@ const rawPages: PageContentInput[] = [
       {
         blockType: "introduction",
         eyebrow: "Support that begins where you are",
-        heading: "A steadier way through uncertainty",
+        heading: "Discover your inherent health and truly thrive",
         body: [
           "A cancer diagnosis can affect far more than physical health. It can reshape identity, relationships, confidence and the rhythm of everyday life.",
-          "Thrive Through Cancer is a virtual practice for people living with cancer, those caring for someone they love, and people ready to build more supportive health habits.",
+          "Thrive Through Cancer is a virtual practice for people living with cancer, those caring for someone they love, and people ready to build more supportive health habits. Its mission is to help you thrive, not just survive.",
         ],
         align: "centre",
       },
@@ -160,7 +272,7 @@ const rawPages: PageContentInput[] = [
           "Renny is a health coach and psycho-oncology counsellor dedicated to helping people navigate cancer with resilience and hope.",
           "Her approach brings together health coaching, behaviour change, positive psychology and psycho-oncology support, with care taken to remain within a non medical scope.",
         ],
-        image: rennyStanding,
+        image: privateSession,
         imageSide: "right",
         action: { label: "Read Renny’s story", href: "/about" },
         tone: "white",
@@ -173,7 +285,7 @@ const rawPages: PageContentInput[] = [
           "Sessions can draw on Functional Medicine coaching principles, positive psychology, behaviour change science, mind and body practices, Radical Remission learning and the Physical, Emotional, Mental and Spiritual framework known as PEMS.",
           "These approaches support reflection and everyday wellbeing. They do not diagnose disease, prescribe treatment or promise a health outcome.",
         ],
-        image: quietPath,
+        image: coachingDesk,
         imageSide: "left",
         action: { label: "Explore our approach", href: "/approach" },
         tone: "cream",
@@ -244,16 +356,16 @@ const rawPages: PageContentInput[] = [
           "Her work with clients across the cancer journey has shaped a deep respect for the impact diagnosis can have on individuals and families. Her training and research inform practical ways to reduce stress, process emotions and strengthen resilience.",
           "As a health educator and researcher, Renny is passionate about equipping people with skills that support self efficacy. Her role is to offer thoughtful questions, practical tools, encouragement and accountable partnership.",
         ],
-        image: rennySeated,
+        image: caregiverMugs,
         imageSide: "left",
         tone: "white",
       },
       {
         blockType: "feature_list",
-        eyebrow: "Training supplied by the client",
+        eyebrow: "Renny’s credentials",
         heading: "Renny’s credentials",
         introduction:
-          "The qualification names below follow the wording supplied in the website brief. Two institution names remain intentionally neutral pending documentary confirmation.",
+          "The qualification names below follow the wording supplied in the copywriting document.",
         layout: "stack",
         tone: "mist",
         items: [
@@ -267,20 +379,20 @@ const rawPages: PageContentInput[] = [
           },
           {
             title: "Master’s in Psycho-Oncology",
-            body: "Institution name awaiting confirmation from the final certificate.",
+            body: "Tech School of Medicine.",
           },
           {
             title: "BA in Psychology and Communication",
-            body: "Institution name awaiting confirmation from the final certificate.",
+            body: "University Northwest.",
           },
         ],
       },
       {
         blockType: "notice",
-        heading: "Credential verification is still in progress",
+        heading: "Credential display still needs final approval",
         body: [
-          "The supplied draft names “Tech School of Medicine” and “University Northwest”. Those labels may be incomplete or reversed. They will not be guessed or paired with logos until the client supplies certificates and confirms display permission.",
-          "No professional registration, protected title or medical qualification is claimed beyond the supplied wording.",
+          "Certification logos and certificate images should only be published after the practice confirms the final files, display wording and permissions.",
+          "No professional registration, protected title or medical qualification is claimed beyond the supplied copy.",
         ],
         tone: "verification",
       },
@@ -318,9 +430,9 @@ const rawPages: PageContentInput[] = [
         heading: "The right kind of support for this part of the journey",
         body:
           "Some moments call for practical change. Others need emotional space. Explore three distinct services and choose the conversation that best matches your needs.",
-        primaryAction: { label: "Choose a service", href: "/services" },
+        primaryAction: { label: "Book a Cancer Coaching Session", href: "/book" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
-        image: quietPath,
+        image: openGarden,
         aside: "Different needs, one respectful standard of care.",
       },
       {
@@ -399,7 +511,7 @@ const rawPages: PageContentInput[] = [
         heading: "Make supportive choices feel possible in daily life",
         body:
           "A practical, personalised partnership to help you shape sustainable habits around nutrition, movement, sleep, stress and your wider treatment plan.",
-        primaryAction: { label: "Prepare to book", href: "/book" },
+        primaryAction: { label: "Book a Cancer Coaching Session", href: "/book" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
         image: nourishmentStillLife,
         aside: "Progress shaped around your energy, needs and medical plan.",
@@ -419,7 +531,7 @@ const rawPages: PageContentInput[] = [
         eyebrow: "What the programme can include",
         heading: "Four forms of practical support",
         introduction:
-          "Every plan is individual. The service brief includes the following areas, each offered within a non medical coaching scope.",
+          "Every plan is individual. Coaching can include the following areas, each offered within a non medical scope.",
         tone: "mist",
         layout: "grid",
         items: [
@@ -488,7 +600,7 @@ const rawPages: PageContentInput[] = [
         blockType: "call_to_action",
         heading: "Consider your first coaching conversation",
         body: "Review pricing and the honest preparation path while secure calendar booking is being completed.",
-        action: { label: "Prepare to book", href: "/book" },
+        action: { label: "Book a Cancer Coaching Session", href: "/book" },
       },
     ],
   },
@@ -505,9 +617,9 @@ const rawPages: PageContentInput[] = [
         heading: "A place for what cancer asks you to carry",
         body:
           "Cancer can affect emotions, thoughts, identity and relationships. Counselling offers a dedicated space to process that impact with care.",
-        primaryAction: { label: "Prepare to book", href: "/book" },
+        primaryAction: { label: "Book a Psycho-Oncology Counselling Session", href: "/book" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
-        image: reflectionStillLife,
+        image: counsellingRoom,
         aside: "Emotional support through every stage of the experience.",
       },
       {
@@ -550,7 +662,7 @@ const rawPages: PageContentInput[] = [
         heading: "Clear therapeutic boundaries",
         body: [
           "This service is not emergency or crisis care. If you may harm yourself or someone else, or need urgent mental health support, contact local emergency services or an appropriate crisis service now.",
-          "The final public wording for professional registration and regulated counselling scope remains subject to client confirmation. The service will not claim protected registration that has not been documented.",
+          "The final public wording for professional registration and regulated counselling scope remains subject to practice confirmation. The service will not claim protected registration that has not been documented.",
         ],
         tone: "scope",
       },
@@ -569,7 +681,7 @@ const rawPages: PageContentInput[] = [
         blockType: "call_to_action",
         heading: "You do not have to hold this alone",
         body: "Review the preparation path for a first counselling conversation and decide what feels right for you.",
-        action: { label: "Prepare to book", href: "/book" },
+        action: { label: "Book a Psycho-Oncology Counselling Session", href: "/book" },
       },
     ],
   },
@@ -586,9 +698,9 @@ const rawPages: PageContentInput[] = [
         heading: "Turn health intentions into habits that can last",
         body:
           "Prevention coaching helps you identify personal priorities, understand barriers and build realistic routines with encouragement and accountability.",
-        primaryAction: { label: "Prepare to book", href: "/book" },
+        primaryAction: { label: "Book a Cancer Prevention Coaching Session", href: "/book" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
-        image: quietPath,
+        image: appointmentNotes,
         aside: "A practical path shaped around your real life.",
         tone: "mist",
       },
@@ -600,7 +712,7 @@ const rawPages: PageContentInput[] = [
           "Cancer risk is complex and no lifestyle can guarantee prevention. Coaching focuses on evidence informed, health supporting behaviours without blame or certainty claims.",
           "Together, we identify the areas that matter most to you, such as nourishment, movement, sleep, alcohol or tobacco use, stress and recommended screening conversations with your healthcare provider.",
         ],
-        image: nourishmentStillLife,
+        image: preventionHabits,
         imageSide: "right",
         tone: "white",
       },
@@ -649,7 +761,7 @@ const rawPages: PageContentInput[] = [
         blockType: "call_to_action",
         heading: "Choose one meaningful place to begin",
         body: "Review the preparation path for a first coaching session and consider the change you most want support with.",
-        action: { label: "Prepare to book", href: "/book" },
+        action: { label: "Book a Cancer Prevention Coaching Session", href: "/book" },
       },
     ],
   },
@@ -668,7 +780,7 @@ const rawPages: PageContentInput[] = [
           "Renny draws from several coaching and wellbeing frameworks to help people reflect, make practical changes and strengthen resilience alongside medical care.",
         primaryAction: { label: "Explore PEMS", href: "/pems-assessment" },
         secondaryAction: { label: "Compare services", href: "/services" },
-        image: quietPath,
+        image: permaCards,
         aside: "Frameworks for reflection, not formulas for healing.",
         tone: "teal",
       },
@@ -679,9 +791,9 @@ const rawPages: PageContentInput[] = [
         body: [
           "Radical Remission is a concept developed by Dr Kelly Turner after studying people who experienced recovery outside medical projections. Her work identified ten factors commonly reported across those stories.",
           "In coaching, these factors may be used as prompts for reflection and supportive lifestyle conversations. They complement conventional cancer treatment and must not be interpreted as proof that a person can cause or guarantee remission.",
-          "The original brief proposed survivor stories. The site does not reproduce or imply endorsements from survivors. Approved external reading can be added to Resources after links and permissions are reviewed.",
+          "Survivor stories will only be published after source review, permission and careful framing. The site does not reproduce or imply endorsements from survivors.",
         ],
-        image: reflectionStillLife,
+        image: researchReading,
         imageSide: "right",
         action: { label: "Visit resources", href: "/resources" },
         tone: "white",
@@ -721,10 +833,10 @@ const rawPages: PageContentInput[] = [
         eyebrow: "PEMS Conditioning Gems",
         heading: "A four part lens for personal reflection",
         body: [
-          "The client’s proposed flagship tool considers Physical, Emotional, Mental and Spiritual wellbeing through twelve “gems”. It is intended to help people notice strengths and possible areas for support.",
+          "The proposed flagship tool considers Physical, Emotional, Mental and Spiritual wellbeing through twelve “gems”. It is intended to help people notice strengths and possible areas for support.",
           "The final twelve gem questions, scoring method and personalised feedback rules were not supplied. The current site therefore explains the framework without pretending to provide a validated assessment result.",
         ],
-        image: nourishmentStillLife,
+        image: mindBodyCalm,
         imageSide: "left",
         action: { label: "Explore the PEMS pathway", href: "/pems-assessment" },
         tone: "white",
@@ -758,7 +870,7 @@ const rawPages: PageContentInput[] = [
           "This introductory pathway helps you reflect on Physical, Emotional, Mental and Spiritual wellbeing without collecting health information or producing a clinical score.",
         primaryAction: { label: "Compare services", href: "/services" },
         secondaryAction: { label: "Read our approach", href: "/approach" },
-        image: reflectionStillLife,
+        image: pemsGems,
         aside: "Reflection first. No diagnosis, scoring or stored answers.",
         tone: "mist",
       },
@@ -767,7 +879,7 @@ const rawPages: PageContentInput[] = [
         eyebrow: "A carefully scoped introduction",
         heading: "The final assessment is not yet published",
         body: [
-          "The source brief describes twelve PEMS Conditioning Gems developed from cancer research, but it does not provide the final questions, scoring logic, evidence notes or personalised feedback rules.",
+          "The copywriting document describes twelve PEMS Conditioning Gems developed from cancer research, but it does not provide the final questions, scoring logic, evidence notes or personalised feedback rules.",
           "Rather than invent those details, this page offers four private reflection prompts. Nothing is entered, submitted or stored. You can consider the prompts for yourself or bring what feels useful to a future conversation.",
         ],
       },
@@ -824,9 +936,9 @@ const rawPages: PageContentInput[] = [
         heading: "Clear fees, with room for a human conversation",
         body:
           "The supplied fees are shown in South African rand. Payment and secure booking will only activate once the operational setup has been completed and tested.",
-        primaryAction: { label: "Prepare to book", href: "/book" },
+        primaryAction: { label: "Book a Session Today", href: "/book" },
         secondaryAction: { label: "Compare services", href: "/services" },
-        image: rennySeated,
+        image: bookingCalendar,
         aside: "Transparent starting points for planning support.",
       },
       {
@@ -850,11 +962,11 @@ const rawPages: PageContentInput[] = [
             name: "12 Session Package",
             duration: "Structure to be confirmed",
             price: "10% discount",
-            body: "The brief confirms a 10% package discount but does not define whether the foundation session is included. The final package total will be published before checkout opens.",
+            body: "A twelve session package is offered with a 10% discount. The final package total and session mix will be published before checkout opens.",
           },
         ],
         notes: [
-          "The brief does not confirm VAT treatment. Displayed amounts must be reconfirmed before live payment is enabled.",
+          "Final payment setup, package composition and any reduced fee process will be confirmed before checkout opens.",
           "PayFast remains unavailable unless production credentials, approved legal versions and the secure server integration are all configured.",
         ],
       },
@@ -863,10 +975,10 @@ const rawPages: PageContentInput[] = [
         eyebrow: "Financial flexibility",
         heading: "Please speak to us if cost is a barrier",
         body: [
-          "The client’s intention is to make support more accessible when financial hardship arises during treatment. People who can pay the full fee help create room for those who cannot.",
-          "The eligibility, available places and approval process still need to be formalised. No reduced fee is guaranteed until that process is confirmed directly with the practice.",
+          "Financial concerns can arise during treatment. If cost is a barrier, you can ask the practice about paying what you can afford.",
+          "If you can pay the full fee, your contribution helps expand access to support. Reduced fees depend on available capacity and direct confirmation from the practice.",
         ],
-        image: reflectionStillLife,
+        image: financialPlanning,
         imageSide: "left",
         tone: "mist",
       },
@@ -875,7 +987,7 @@ const rawPages: PageContentInput[] = [
         heading: "Payment methods remain carefully controlled",
         body: [
           "When live payment is approved and configured, PayFast hosted checkout is the only online payment route. Credit or debit card details are never entered directly into this website.",
-          "The legal pages are published as transparent drafts, but client-specific cancellation, refund, VAT, package and EFT rules still require approval. EFT remains disabled until formal banking and reconciliation instructions are approved.",
+          "The legal pages are published as transparent drafts, but practice specific cancellation, refund, VAT, package and EFT rules still require approval. EFT remains disabled until formal banking and reconciliation instructions are approved.",
         ],
         tone: "status",
       },
@@ -902,7 +1014,7 @@ const rawPages: PageContentInput[] = [
           "The secure booking workspace below shows live options only when Supabase, availability and Google Calendar checks are configured. Viewing this page does not reserve or confirm an appointment, and a held time is never presented as confirmed.",
         primaryAction: { label: "Compare services", href: "/services" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
-        image: reflectionStillLife,
+        image: routinePlanning,
         aside: "Share contact details, never diagnosis or treatment information.",
         tone: "mist",
       },
@@ -963,9 +1075,9 @@ const rawPages: PageContentInput[] = [
         heading: "Thoughtful reading for the moments between conversations",
         body:
           "A growing library of practical, carefully reviewed material for reflection, self advocacy, supportive habits and emotional wellbeing.",
-        primaryAction: { label: "Explore our approach", href: "/approach" },
-        secondaryAction: { label: "Explore our approach", href: "/approach" },
-        image: nourishmentStillLife,
+        primaryAction: { label: "Read the approach overview", href: "/approach" },
+        secondaryAction: { label: "Compare services", href: "/services" },
+        image: reflectionStillLife,
         aside: "Clear sources, careful claims and no fabricated survivor stories.",
         tone: "teal",
       },
@@ -988,10 +1100,10 @@ const rawPages: PageContentInput[] = [
         eyebrow: "Radical Remission reading",
         heading: "Links will be reviewed before publication",
         body: [
-          "The source brief asks for more information about Radical Remission and inspiring survivor stories. No unreviewed external link or borrowed story is presented as approved content.",
+          "Radical Remission reading and survivor stories require careful review before publication. No unreviewed external link or borrowed story is presented as approved content.",
           "Future entries will name the author, publisher, date, original URL and why the resource is included. Personal stories will never be presented as evidence that a particular approach causes remission.",
         ],
-        image: reflectionStillLife,
+        image: quietPath,
         imageSide: "right",
         action: { label: "Read the approach overview", href: "/approach" },
         tone: "white",

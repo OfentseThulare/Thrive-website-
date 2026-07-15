@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -31,7 +31,10 @@ test("every site photograph has complete provenance and usage metadata", async (
     assets: Array<Record<string, unknown>>;
   };
 
-  assert.equal(metadata.assets.length, 5);
+  const publicImageFiles = (await readdir(path.join(projectRoot, "public/images")))
+    .filter((file) => /\.(jpe?g|webp)$/i.test(file));
+
+  assert.equal(metadata.assets.length, publicImageFiles.length);
 
   for (const asset of metadata.assets) {
     const publicPath = String(asset.path);
@@ -51,6 +54,14 @@ test("every site photograph has complete provenance and usage metadata", async (
       assert.equal(asset.licenceUrl, "https://unsplash.com/license");
       assert.match(String(asset.originalSourceUrl), /^https:\/\/unsplash\.com\/photos\//);
       await access(path.join(projectRoot, String(asset.sourceAssetPath)));
+    }
+
+    if (asset.assetType === "AI-generated editorial image") {
+      assert.equal(asset.provider, "Higgsfield Seedream 5.0 Pro and Bytedance Image Upscale");
+      assert.equal(asset.downloadDate, "15/07/2026");
+      assert.match(String(asset.assetIdentifier), /^seedream:[0-9a-f-]+; upscale:[0-9a-f-]+$/);
+      await access(path.join(projectRoot, String(asset.sourceAssetPath)));
+      await access(path.join(projectRoot, String(asset.baseSourceAssetPath)));
     }
   }
 });

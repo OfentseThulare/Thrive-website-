@@ -18,8 +18,8 @@ Every substantive source section is mapped below. “Verification required” me
 | Renny’s encouragement and self efficacy philosophy | `/about` | Restored as editorial biography, not a fabricated direct quotation |
 | Functional Medicine Certified Health Coach credential | `/about` | Exact supplied qualification and institution wording included |
 | Radical Remission Health Coach and Teacher credential | `/about` | Exact supplied qualification and institution wording included |
-| Master’s in Psycho-Oncology credential | `/about` | Qualification included. “Tech School of Medicine” is flagged for certificate verification |
-| BA in Psychology and Communication credential | `/about` | Qualification included. “University Northwest” is flagged for certificate verification |
+| Master’s in Psycho-Oncology credential | `/about` | Exact supplied qualification and institution wording included. Certificate display still requires final approval |
+| BA in Psychology and Communication credential | `/about` | Exact supplied qualification and institution wording included. Certificate display still requires final approval |
 | Certification logos | `/about` coverage note only | Verification required. No logos invented or used without supplied files and permission |
 | Health Coaching programme | `/services/cancer-health-coaching` | Full dedicated page with personalised planning and behaviour change |
 | Nutrition, exercise, sleep and stress | Health coaching page | All four lifestyle areas restored with medical scope boundaries |
@@ -62,8 +62,9 @@ Every substantive source section is mapped below. “Verification required” me
 | Financial hardship and pay what you can | `/pricing` | Intent restored, with eligibility and availability flagged for operational confirmation |
 | PayFast, card and direct EFT | `/pricing`, `/book` | Presented as planned only. No false checkout or card collection |
 | Google form booking suggestion | `/book` | Replaced by the approved secure native calendar plan. Current page truthfully remains informational |
-| Website portrait one | `/about` and supporting pages | Reused as client supplied portrait |
-| Website portrait two | `/` and supporting pages | Reused as client supplied portrait |
+| Website portrait one | `/about` | Used for Renny’s biography and identity sections |
+| Website portrait two | `/`, `/about` | Used only where Renny’s identity is the visual subject |
+| Additional editorial imagery | Service, approach, pricing, booking and resource pages | Fourteen distinct 4K AI generated images added to avoid repeated imagery and avoid fake patient or testimonial scenes |
 | Teal integrated colour scheme | Global design system | Implemented with teal, cream and a restrained warm coral accent |
 | Rachel Wilkins template preference | Global visual direction | Interpreted as calm editorial pacing, not copied as a template |
 | Supplied one page flow | Full approved sitemap | Expanded into eleven dedicated routes without losing source sections |

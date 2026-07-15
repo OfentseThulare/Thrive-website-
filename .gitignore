@@ -5,6 +5,7 @@
 node_modules
 out
 coverage
+tmp/
 .env
 .env.*
 !.env.example

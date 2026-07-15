@@ -70,6 +70,6 @@ test("legal CMS seeds remain typed content and expose all required routes", asyn
     assert.match(routes, new RegExp(`/${slug}`));
   }
   assert.match(legal, /Last updated 15\/07\/2026/);
-  assert.match(legal, /pending client confirmation/i);
+  assert.match(legal, /pending practice confirmation/i);
   assert.doesNotMatch(legal, /dangerouslySetInnerHTML|blockType: "html"/);
 });
