@@ -176,7 +176,7 @@ select ok(
 reset role;
 
 set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal2"}', true);
 select ok(
   public.test_operation_changes_rows($sql$insert into public.page_versions (id, page_id, version_number, snapshot) values ('21000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', 2, '{"slug":"draft-page","title":"Draft page","description":"Draft description","status":"published","sections":[]}')$sql$),
   'publisher can create an immutable version'

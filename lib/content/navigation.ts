@@ -27,5 +27,8 @@ export const getPublishedNavigation = cache(async (): Promise<PublicNavigationIt
     .order("position");
   if (error) throw new Error("Published navigation could not be loaded.");
   if (!data?.length) return fallbackNavigation;
-  return data.map((item) => ({ href: safeHrefSchema.parse(item.href), label: String(item.label) }));
+  return data.flatMap((item) => {
+    const href = safeHrefSchema.safeParse(item.href);
+    return href.success ? [{ href: href.data, label: String(item.label) }] : [];
+  });
 });

@@ -51,7 +51,7 @@ select throws_ok(
 reset role;
 
 set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"41000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"41000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal2"}', true);
 select lives_ok(
   $$select public.publish_page(
     '42000000-0000-0000-0000-000000000001',
@@ -74,7 +74,7 @@ select throws_ok(
 reset role;
 
 set local role authenticated;
-select set_config('request.jwt.claims', '{"sub":"41000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"41000000-0000-0000-0000-000000000003","role":"authenticated","aal":"aal2"}', true);
 select lives_ok(
   $$select public.manage_user_role('41000000-0000-0000-0000-000000000001', 'auditor', true)$$,
   'owner can grant a role'

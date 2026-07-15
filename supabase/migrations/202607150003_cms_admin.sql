@@ -43,6 +43,19 @@ using (visible and status = 'published');
 
 drop policy content_audit_append on public.content_audit_log;
 
+create function public.current_session_is_aal2()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((select auth.jwt() ->> 'aal') = 'aal2', false);
+$$;
+
+revoke all on function public.current_session_is_aal2() from public;
+grant execute on function public.current_session_is_aal2() to authenticated;
+
 create or replace function public.validate_cms_snapshot(snapshot jsonb)
 returns boolean
 language sql
@@ -88,7 +101,7 @@ declare
   new_version_id uuid;
   server_snapshot jsonb;
 begin
-  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) then
+  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) or not public.current_session_is_aal2() then
     raise exception 'CMS_FORBIDDEN' using errcode = '42501';
   end if;
 
@@ -174,7 +187,7 @@ declare
   target_page public.pages%rowtype;
   target_version public.page_versions%rowtype;
 begin
-  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) then
+  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) or not public.current_session_is_aal2() then
     raise exception 'CMS_FORBIDDEN' using errcode = '42501';
   end if;
 
@@ -224,7 +237,7 @@ declare
   actor uuid := (select auth.uid());
   previous public.navigation_items%rowtype;
 begin
-  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) then
+  if actor is null or not public.has_any_role(array['owner', 'publisher']::public.app_role[]) or not public.current_session_is_aal2() then
     raise exception 'CMS_FORBIDDEN' using errcode = '42501';
   end if;
   select * into previous from public.navigation_items where id = target_item_id for update;
@@ -256,7 +269,7 @@ as $$
 declare
   actor uuid := (select auth.uid());
 begin
-  if actor is null or not public.has_any_role(array['owner']::public.app_role[]) then
+  if actor is null or not public.has_any_role(array['owner']::public.app_role[]) or not public.current_session_is_aal2() then
     raise exception 'CMS_FORBIDDEN' using errcode = '42501';
   end if;
   if grant_role then

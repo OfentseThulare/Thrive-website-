@@ -53,20 +53,34 @@ export const publishPageInputSchema = z.object({
 
 export const restoreVersionInputSchema = z.object({ pageId: uuid, versionId: uuid });
 
-export const reusableEntryInputSchema = z.object({
+const safePlainText = z.string().trim().min(1).max(3000).refine(
+  (value) => !/<\s*\/?\s*(?:script|iframe|style|link|object|embed|html)\b|javascript\s*:|data\s*:\s*text\/html/i.test(value),
+  "HTML, executable URLs and embedded layout are not allowed",
+);
+
+const reusableBase = {
   entryId: uuid.optional(),
-  entryType: z.enum(["credential", "faq", "resource", "testimonial", "pricing_note", "legal_notice"]),
   key: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100),
   status: z.literal("draft"),
-  content: z.preprocess((value) => {
+};
+
+function jsonContent<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => {
     if (typeof value !== "string") return value;
-    try {
-      return JSON.parse(value) as unknown;
-    } catch {
-      return value;
-    }
-  }, z.record(z.string(), z.union([z.string().trim().max(3000), z.array(z.string().trim().max(800)).max(20)]))),
-});
+    try { return JSON.parse(value) as unknown; } catch { return value; }
+  }, schema);
+}
+
+export const reusableEntryInputSchema = z.discriminatedUnion("entryType", [
+  z.object({ ...reusableBase, entryType: z.literal("faq"), content: jsonContent(z.object({ question: safePlainText.max(180), answer: safePlainText }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("resource"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: safeHrefSchema.optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("credential"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, issuer: safePlainText.max(180).optional(), verificationStatus: z.enum(["pending", "verified"]).optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("testimonial"), content: jsonContent(z.object({ quote: safePlainText, attribution: safePlainText.max(180), consentConfirmed: z.literal(true) }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("pricing_note"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("legal_notice"), content: jsonContent(z.object({ title: safePlainText.max(180), body: z.array(safePlainText.max(1200)).min(1).max(20), effectiveDate: z.string().date().optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("service"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: safeHrefSchema.optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("pricing"), content: jsonContent(z.object({ title: safePlainText.max(180), duration: safePlainText.max(100), price: safePlainText.max(80), body: safePlainText }).strict()) }),
+]);
 
 export const navigationInputSchema = z.object({
   itemId: uuid.optional(),
@@ -117,6 +131,24 @@ export const contentPublicationInputSchema = z.object({
   entityId: uuid,
   makePublic: z.enum(["true", "false"]).transform((value) => value === "true"),
 });
+
+export const mfaFactorInputSchema = z.object({ factorId: uuid });
+export const mfaVerifyInputSchema = z.object({
+  factorId: uuid,
+  code: z.string().trim().regex(/^\d{6}$/),
+});
+export const mfaEnrolInputSchema = z.object({
+  friendlyName: z.string().trim().min(1).max(60).default("Thrive CMS"),
+});
+export const mfaUnenrolInputSchema = mfaFactorInputSchema.extend({ confirmation: z.literal("REMOVE") });
+
+const staffRoleSchema = z.enum(["publisher", "editor", "scheduler", "finance", "auditor"]);
+export const staffInvitationInputSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(320),
+  role: staffRoleSchema,
+  expiresInDays: z.coerce.number().int().min(1).max(30).default(7),
+});
+export const revokeInvitationInputSchema = z.object({ invitationId: uuid });
 
 export type PageDraftInput = z.infer<typeof pageDraftInputSchema>;
 export type SectionInput = z.infer<typeof sectionInputSchema>;

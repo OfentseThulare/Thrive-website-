@@ -7,18 +7,22 @@ import { randomUUID } from "node:crypto";
 import { getSiteUrl } from "@/lib/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCmsIdentity } from "@/lib/cms/auth";
-import type { CmsActionState } from "@/lib/cms/action-state";
+import type { CmsActionState, MfaEnrolActionState } from "@/lib/cms/action-state";
 import { safeCmsError } from "@/lib/cms/action-state";
 import {
   auditRoles,
   contentRoles,
   publishingRoles,
+  CmsMfaRequiredError,
   requireCmsRole,
 } from "@/lib/cms/permissions";
 import {
   assetMetadataSchema,
   contentPublicationInputSchema,
   deleteSectionInputSchema,
+  mfaEnrolInputSchema,
+  mfaUnenrolInputSchema,
+  mfaVerifyInputSchema,
   navigationInputSchema,
   navigationPublicationInputSchema,
   pageDraftInputSchema,
@@ -26,7 +30,9 @@ import {
   restoreVersionInputSchema,
   reusableEntryInputSchema,
   roleManagementInputSchema,
+  revokeInvitationInputSchema,
   sectionInputSchema,
+  staffInvitationInputSchema,
   validateAssetFile,
 } from "@/lib/cms/schemas";
 import { seedPages } from "@/lib/content/seed";
@@ -35,18 +41,20 @@ function values(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
 
-async function authorisedClient(roles: Parameters<typeof requireCmsRole>[1]) {
+async function authenticatedRoleClient(roles: Parameters<typeof requireCmsRole>[1]) {
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("CMS_NOT_CONFIGURED");
   const identity = await getCmsIdentity();
   if (!identity) throw new Error("CMS_UNAUTHENTICATED");
   requireCmsRole(identity.roles, roles);
-  if (
-    process.env.NODE_ENV === "production"
-    && identity.roles.some((role) => role === "owner" || role === "publisher")
-  ) {
+  return { supabase, identity };
+}
+
+async function authorisedClient(roles: Parameters<typeof requireCmsRole>[1]) {
+  const { supabase, identity } = await authenticatedRoleClient(roles);
+  if (identity.roles.some((role) => role === "owner" || role === "publisher")) {
     const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assuranceError || assurance.currentLevel !== "aal2") throw new Error("CMS_MFA_REQUIRED");
+    if (assuranceError || assurance.currentLevel !== "aal2") throw new CmsMfaRequiredError();
   }
   return { supabase, identity };
 }
@@ -95,9 +103,15 @@ export async function requestMagicLinkAction(
   if (!supabase) return { status: "error", message: "The secure admin service is not configured yet." };
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) return { status: "error", message: "Enter a valid email address." };
+  const { data: invitationEligible } = await supabase.rpc("invitation_email_is_eligible", {
+    candidate_email: email,
+  });
   await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: new URL("/auth/callback?next=/admin", getSiteUrl()).toString() },
+    options: {
+      emailRedirectTo: new URL("/auth/callback?next=/admin", getSiteUrl()).toString(),
+      shouldCreateUser: invitationEligible === true,
+    },
   });
   return { status: "success", message: "If that address is authorised, a secure sign-in link is on its way." };
 }
@@ -106,6 +120,59 @@ export async function signOutAction() {
   const supabase = await createServerSupabaseClient();
   if (supabase) await supabase.auth.signOut();
   redirect("/admin/login");
+}
+
+export async function enrolMfaAction(
+  _previous: MfaEnrolActionState,
+  formData: FormData,
+): Promise<MfaEnrolActionState> {
+  try {
+    const input = mfaEnrolInputSchema.parse(values(formData));
+    const { supabase } = await authenticatedRoleClient(publishingRoles);
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: input.friendlyName });
+    if (error || !data.totp) throw new Error("CMS_MFA_ENROL_FAILED");
+    return {
+      status: "enrolment",
+      message: "Scan the QR code, then enter the six-digit code to finish enrolment.",
+      factorId: data.id,
+      qrCode: data.totp.qr_code,
+      secret: data.totp.secret,
+    };
+  } catch (error) {
+    return safeCmsError(error);
+  }
+}
+
+export async function verifyMfaAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = mfaVerifyInputSchema.parse(values(formData));
+    const { supabase } = await authenticatedRoleClient(publishingRoles);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: input.factorId, code: input.code });
+    if (error) return { status: "error", message: "That authenticator code could not be verified." };
+    revalidatePath("/admin", "layout");
+    return { status: "success", message: "Two-step verification is active for this session." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
+}
+
+export async function unenrolMfaAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = mfaUnenrolInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(publishingRoles);
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: input.factorId });
+    if (error) throw new Error("CMS_MFA_UNENROL_FAILED");
+    revalidatePath("/admin/security");
+    return { status: "success", message: "The authenticator factor was removed." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
 export async function savePageDraftAction(
@@ -343,15 +410,53 @@ export async function manageRoleAction(formData: FormData) {
 
 export async function setContentPublicationAction(formData: FormData) {
   const input = contentPublicationInputSchema.parse(values(formData));
-  const { supabase, identity } = await authorisedClient(publishingRoles);
-  const table = input.entity === "asset" ? "assets" : "reusable_entries";
-  const status = input.makePublic ? "published" : "draft";
-  const update = input.entity === "asset" ? { status } : { status, updated_by: identity.userId };
-  const { error } = await supabase.from(table).update(update).eq("id", input.entityId);
+  const { supabase } = await authorisedClient(publishingRoles);
+  const rpc = input.entity === "asset" ? "set_asset_publication" : "set_reusable_publication";
+  const { error } = await supabase.rpc(rpc, { target_id: input.entityId, make_public: input.makePublic });
   if (error) throw new Error("CMS_PUBLICATION_STATE_FAILED");
-  await audit(supabase, identity.userId, `${input.entity}.status_changed`, input.entity, input.entityId, { status });
   revalidatePath("/", "layout");
   revalidatePath(input.entity === "asset" ? "/admin/assets" : "/admin/reusable");
+}
+
+export async function createStaffInvitationAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = staffInvitationInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(["owner"]);
+    const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
+    const { data, error } = await supabase.rpc("create_staff_invitation", {
+      candidate_email: input.email,
+      candidate_role: input.role,
+      candidate_expires_at: expiresAt,
+    });
+    if (error || !data) throw new Error("CMS_INVITATION_CREATE_FAILED");
+    const { error: deliveryError } = await supabase.auth.signInWithOtp({
+      email: input.email,
+      options: {
+        emailRedirectTo: new URL("/auth/callback?next=/admin", getSiteUrl()).toString(),
+        shouldCreateUser: true,
+      },
+    });
+    revalidatePath("/admin/invitations");
+    return {
+      status: "success",
+      message: deliveryError
+        ? "Invitation created, but email delivery could not be confirmed. The invited person can request a secure sign-in link from the admin page."
+        : "Invitation created and a secure sign-in link was requested for the invited person.",
+    };
+  } catch (error) {
+    return safeCmsError(error);
+  }
+}
+
+export async function revokeStaffInvitationAction(formData: FormData) {
+  const input = revokeInvitationInputSchema.parse(values(formData));
+  const { supabase } = await authorisedClient(["owner"]);
+  const { error } = await supabase.rpc("revoke_staff_invitation", { target_id: input.invitationId });
+  if (error) throw new Error("CMS_INVITATION_REVOKE_FAILED");
+  revalidatePath("/admin/invitations");
 }
 
 export async function initialiseCmsContentAction() {

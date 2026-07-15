@@ -5,9 +5,24 @@ export type CmsActionState =
 
 export const initialCmsActionState: CmsActionState = { status: "idle" };
 
+export type MfaEnrolActionState = CmsActionState | {
+  status: "enrolment";
+  message: string;
+  factorId: string;
+  qrCode: string;
+  secret: string;
+};
+
 export function safeCmsError(error: unknown): CmsActionState {
   if (error instanceof Error && error.name === "CmsAuthorisationError") {
     return { status: "error", message: error.message };
+  }
+
+  if (error instanceof Error && error.name === "CmsMfaRequiredError") {
+    return {
+      status: "error",
+      message: "Two-step verification is required. Open Security in the CMS, verify your authenticator code, then try again.",
+    };
   }
 
   return {

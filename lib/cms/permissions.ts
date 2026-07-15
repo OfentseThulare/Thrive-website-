@@ -37,3 +37,10 @@ export class CmsAuthorisationError extends Error {
     this.name = "CmsAuthorisationError";
   }
 }
+
+export class CmsMfaRequiredError extends Error {
+  constructor() {
+    super("Two-step verification is required for this action.");
+    this.name = "CmsMfaRequiredError";
+  }
+}

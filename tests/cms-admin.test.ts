@@ -7,6 +7,7 @@ import {
   navigationInputSchema,
   pageDraftInputSchema,
   publishPageInputSchema,
+  reusableEntryInputSchema,
   sectionInputSchema,
   validateAssetFile,
 } from "../lib/cms/schemas.ts";
@@ -44,6 +45,15 @@ test("CMS payloads reject invalid identifiers, unsafe navigation and unvalidated
   assert.equal(navigationInputSchema.safeParse({ location: "primary", label: "Bad", href: "javascript:alert(1)", position: 0 }).success, false);
   assert.equal(sectionInputSchema.safeParse({ pageSlug: "home", position: 0, visible: true, variant: "default", content: '{"blockType":"raw_html","html":"<script>"}' }).success, false);
   assert.equal(publishPageInputSchema.safeParse({ pageId, expectedSnapshot: "not json" }).success, false);
+});
+
+test("reusable entries use discriminated schemas and recursively reject executable content", () => {
+  const base = { key: "helpful-faq", status: "draft" };
+  assert.equal(reusableEntryInputSchema.safeParse({ ...base, entryType: "faq", content: { question: "Can I book?", answer: "Yes, after reviewing the service scope." } }).success, true);
+  assert.equal(reusableEntryInputSchema.safeParse({ ...base, entryType: "resource", content: { title: "Guide", body: "Useful reading", href: "https://example.org/guide" } }).success, true);
+  assert.equal(reusableEntryInputSchema.safeParse({ ...base, entryType: "faq", content: { question: "Unsafe", answer: "Answer", nested: { script: "bad" } } }).success, false);
+  assert.equal(reusableEntryInputSchema.safeParse({ ...base, entryType: "resource", content: { title: "Unsafe", body: "<iframe src=x></iframe>" } }).success, false);
+  assert.equal(reusableEntryInputSchema.safeParse({ ...base, entryType: "unknown", content: { title: "No" } }).success, false);
 });
 
 test("asset validation accepts only controlled types, sizes and filenames", () => {
@@ -97,6 +107,8 @@ test("every CMS mutation rechecks identity and role while publication uses audit
     "manageRoleAction",
     "setContentPublicationAction",
     "initialiseCmsContentAction",
+    "createStaffInvitationAction",
+    "revokeStaffInvitationAction",
   ]) {
     const start = actions.indexOf(`function ${action}`);
     assert.notEqual(start, -1, `${action} should exist`);
@@ -131,6 +143,57 @@ test("CMS migration pins security definer search paths and grants RPCs narrowly"
   assert.match(migration, /page\.published/);
   assert.match(migration, /cms_json_has_forbidden_keys/);
   assert.match(migration, /drop policy content_audit_append/);
+});
+
+test("MFA and invitation onboarding are complete and fail closed", async () => {
+  const actions = await readFile(new URL("../app/admin/actions.ts", import.meta.url), "utf8");
+  const security = await readFile(new URL("../app/admin/(protected)/security/page.tsx", import.meta.url), "utf8");
+  const config = await readFile(new URL("../supabase/config.toml", import.meta.url), "utf8");
+  const hardening = await readFile(new URL("../supabase/migrations/202607150004_cms_security_hardening.sql", import.meta.url), "utf8");
+  assert.match(config, /\[auth\.mfa\.totp\][\s\S]*?enroll_enabled = true[\s\S]*?verify_enabled = true/);
+  assert.match(actions, /auth\.mfa\.enroll/);
+  assert.match(actions, /auth\.mfa\.challengeAndVerify/);
+  assert.match(actions, /auth\.mfa\.unenroll/);
+  assert.match(security, /Two-step verification/);
+  assert.match(actions, /shouldCreateUser: invitationEligible === true/);
+  assert.match(actions, /shouldCreateUser: true/);
+  assert.match(actions, /rpc\("create_staff_invitation"/);
+  assert.match(actions, /rpc\("revoke_staff_invitation"/);
+  assert.match(hardening, /create table public\.staff_invitations/);
+  assert.match(hardening, /alter table public\.staff_invitations enable row level security/);
+  assert.match(hardening, /alter table public\.staff_invitations force row level security/);
+  assert.match(hardening, /create policy staff_invitations_owner_read/);
+  assert.match(hardening, /role public\.app_role not null check \(role <> 'owner'\)/);
+  assert.match(hardening, /INVITATION_REQUIRED/);
+  assert.match(hardening, /provision_invited_staff_after_signup/);
+  assert.match(hardening, /current_session_is_aal2/);
+  for (const name of ["current_session_is_aal2", "set_reusable_publication", "set_asset_publication", "invitation_email_is_eligible", "provision_invited_staff", "protect_staff_invitation_update", "create_staff_invitation", "revoke_staff_invitation"]) {
+    assert.match(hardening, new RegExp(`function public\\.${name}[\\s\\S]*?set search_path = ''`));
+    assert.match(hardening, new RegExp(`revoke all on function public\\.${name}`));
+  }
+});
+
+test("database navigation validation covers ambiguous and executable href forms", async () => {
+  const hardening = await readFile(new URL("../supabase/migrations/202607150004_cms_security_hardening.sql", import.meta.url), "utf8");
+  const navigation = await readFile(new URL("../lib/content/navigation.ts", import.meta.url), "utf8");
+  assert.match(hardening, /navigation_items_safe_href_check/);
+  assert.match(hardening, /is_safe_cms_href/);
+  assert.match(hardening, /javascript/);
+  assert.match(hardening, /data/);
+  assert.match(hardening, /value !~ '\^\/\/'/);
+  assert.match(navigation, /safeHrefSchema\.safeParse/);
+  assert.doesNotMatch(navigation, /safeHrefSchema\.parse\(item\.href\)/);
+});
+
+test("security hardening pgTAP suite exercises MFA, invitations, reusable schemas and href validation", async () => {
+  const sql = await readFile(new URL("../supabase/tests/004_cms_security_hardening.sql", import.meta.url), "utf8");
+  assert.match(sql, /select plan\(23\)/);
+  assert.match(sql, /AAL1 cannot call the publication RPC directly/);
+  assert.match(sql, /AAL2 can call the publication RPC directly/);
+  assert.match(sql, /nested unsupported keys are rejected/);
+  assert.match(sql, /uninvited account creation/);
+  assert.match(sql, /javascript URL is rejected/);
+  assert.match(sql, /credential-bearing URL is rejected/);
 });
 
 test("no application source references a Supabase service role credential", async () => {

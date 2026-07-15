@@ -1432,6 +1432,22 @@ figure {
   font-weight: 700;
 }
 
+.admin-mfa-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 11px 4vw;
+  color: #5f4611;
+  background: #f7e9bd;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.admin-mfa-banner a {
+  color: #075b5a;
+}
+
 .admin-content {
   width: min(1180px, calc(100% - 64px));
   margin: 0 auto;
@@ -1878,6 +1894,50 @@ figure {
   margin-top: 15px;
 }
 
+.admin-mfa-setup {
+  display: grid;
+  max-width: 520px;
+  gap: 20px;
+}
+
+.admin-mfa-setup img {
+  width: min(280px, 100%);
+  padding: 12px;
+  border: 1px solid #d8d3c8;
+  background: #fff;
+}
+
+.admin-mfa-setup code {
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border-radius: 4px;
+  color: #123a39;
+  background: #e9f2ee;
+}
+
+.admin-mfa-verify {
+  max-width: 440px;
+}
+
+.admin-confirm-panel {
+  max-width: 440px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e2b5ae;
+  border-radius: 5px;
+  background: #fff7f5;
+}
+
+.admin-confirm-panel summary {
+  color: #8c3029;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-confirm-panel form {
+  margin-top: 16px;
+}
+
 .admin-new-section {
   padding: 0 20px 20px;
 }
@@ -2177,6 +2237,11 @@ figure {
   .admin-panel-heading,
   .admin-form-footer {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-mfa-banner {
+    align-items: flex-start;
     flex-direction: column;
   }
 
