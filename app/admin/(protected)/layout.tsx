@@ -12,7 +12,7 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
   const identity = await requireCmsIdentity();
   if (identity.roles.length === 0) redirect("/admin/unauthorised");
   let mfaRequired = false;
-  if (hasCmsRole(identity.roles, ["owner", "publisher"])) {
+  if (hasCmsRole(identity.roles, ["owner", "publisher", "finance"])) {
     const supabase = await requireCmsDatabase();
     const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     mfaRequired = data?.currentLevel !== "aal2";

@@ -4,7 +4,7 @@ export type OrderedField = readonly [name: string, value: string | number | null
 
 export function phpUrlEncode(value: string) {
   return encodeURIComponent(value)
-    .replace(/[!'()~]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/[!'()*~]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
     .replace(/%20/g, "+");
 }
 
@@ -77,6 +77,11 @@ export function validateItnFields(values: Record<string, string>, expectedMercha
 
 export function remoteValidationSucceeded(status: number, body: string) {
   return status >= 200 && status < 300 && body.trim() === "VALID";
+}
+
+export function rejectedReceiptId(payloadHash: string) {
+  if (!/^[a-f0-9]{64}$/.test(payloadHash)) throw new Error("PAYFAST_RECEIPT_HASH_INVALID");
+  return `rejected-${payloadHash.slice(0, 48)}`;
 }
 
 export function buildCheckoutFields(input: {

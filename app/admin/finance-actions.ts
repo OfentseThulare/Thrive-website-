@@ -18,10 +18,8 @@ export async function changeRefundStateAction(formData: FormData) {
   const identity = await getCmsIdentity();
   if (!supabase || !identity) throw new Error("FINANCE_UNAVAILABLE");
   requireCmsRole(identity.roles, ["owner", "finance"]);
-  if (identity.roles.includes("owner")) {
-    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (error || data.currentLevel !== "aal2") throw new CmsMfaRequiredError();
-  }
+  const { data: mfaData, error: mfaError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (mfaError || mfaData.currentLevel !== "aal2") throw new CmsMfaRequiredError();
   const { data, error } = await supabase.rpc("mark_payment_refund_state", {
     p_payment_id: input.paymentId, p_to_state: input.toState,
   });

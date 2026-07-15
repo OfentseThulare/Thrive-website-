@@ -1,6 +1,6 @@
 import { getPayFastEnvironment } from "@/lib/env";
 import { isTrustedPayFastAddress, requestPayFastAddress } from "@/lib/payment/ip";
-import { parseOrderedFormBody, remoteValidationSucceeded, safeSignatureEqual, signPayFastFields, validateItnFields } from "@/lib/payment/payfast";
+import { parseOrderedFormBody, rejectedReceiptId, remoteValidationSucceeded, safeSignatureEqual, signPayFastFields, validateItnFields } from "@/lib/payment/payfast";
 import { finaliseCalendarForPaidBooking, receiptHash } from "@/lib/payment/server";
 import { createBookingAdminClient } from "@/lib/supabase/booking-admin";
 
@@ -17,7 +17,7 @@ function response(status: number) {
 async function recordRejected(hash: string, signatureValid: boolean, code: string) {
   try {
     await createBookingAdminClient().rpc("record_payfast_webhook_receipt", {
-      p_provider_event_id: `rejected-${hash.slice(0, 48)}`,
+      p_provider_event_id: rejectedReceiptId(hash),
       p_payload_hash: hash, p_signature_valid: signatureValid, p_error: code,
     });
   } catch { /* The rejection response remains fail closed. */ }
@@ -50,7 +50,10 @@ export async function POST(request: Request) {
       method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: parsed.validationBody, cache: "no-store", signal: AbortSignal.timeout(5_000), redirect: "error",
     });
-  } catch { return response(503); }
+  } catch {
+    await recordRejected(hash, true, "REMOTE_VALIDATION_UNAVAILABLE");
+    return response(503);
+  }
   if (!remoteValidationSucceeded(validation.status, await validation.text())) {
     await recordRejected(hash, true, "REMOTE_VALIDATION_INVALID");
     return response(422);
@@ -61,7 +64,10 @@ export async function POST(request: Request) {
     p_pf_payment_id: parsed.values.pf_payment_id,
     p_amount_cents: fields.amountCents, p_payload_hash: hash,
   }).maybeSingle();
-  if (error || !data) return response(409);
+  if (error || !data) {
+    await recordRejected(hash, true, "PROCESSING_REJECTED");
+    return response(409);
+  }
   const row = data as Record<string, unknown>;
   if (!row.calendar_event_id) await finaliseCalendarForPaidBooking(row);
   return response(200);

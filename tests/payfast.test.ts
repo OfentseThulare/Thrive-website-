@@ -7,13 +7,13 @@ import { ipv4InCidr, isTrustedPayFastAddress, requestPayFastAddress } from "../l
 import {
   buildCheckoutFields, formatPayFastAmount, parseOrderedFormBody, parseZarCents,
   phpUrlEncode, remoteValidationSucceeded, safeSignatureEqual, serialisePayFastFields,
-  signPayFastFields, validateItnFields,
+  signPayFastFields, validateItnFields, rejectedReceiptId,
 } from "../lib/payment/payfast.ts";
 
 const merchantPaymentId = "TTC-PF-1234567890ABCDEF12345678";
 
 test("PayFast uses PHP-compatible single encoding and lowercase MD5", () => {
-  assert.equal(phpUrlEncode("tea & ~ care"), "tea+%26+%7E+care");
+  assert.equal(phpUrlEncode("tea & ~ * care"), "tea+%26+%7E+%2A+care");
   const fields = [["merchant_id", "10000100"], ["item_name", "Care & support"]] as const;
   assert.equal(serialisePayFastFields(fields), "merchant_id=10000100&item_name=Care+%26+support");
   assert.match(signPayFastFields(fields, "secret phrase"), /^[a-f0-9]{32}$/);
@@ -49,6 +49,13 @@ test("remote validation accepts only an exact VALID response", () => {
   assert.equal(remoteValidationSucceeded(200, "VALID"), true);
   assert.equal(remoteValidationSucceeded(200, "INVALID"), false);
   assert.equal(remoteValidationSucceeded(503, "VALID"), false);
+});
+
+test("rejected and transient receipts use a hash-derived namespace", () => {
+  const hash = "a".repeat(64);
+  assert.equal(rejectedReceiptId(hash), `rejected-${"a".repeat(48)}`);
+  assert.notEqual(rejectedReceiptId(hash), "pf-provider-event-1");
+  assert.throws(() => rejectedReceiptId("pf-provider-event-1"), /PAYFAST_RECEIPT_HASH_INVALID/);
 });
 
 test("official PayFast IPv4 networks use real CIDR membership", () => {

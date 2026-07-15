@@ -1,5 +1,13 @@
 begin;
 
+alter table public.booking_rate_limits
+  drop constraint if exists booking_rate_limits_scope_check;
+alter table public.booking_rate_limits
+  drop constraint if exists booking_rate_limits_scope_allowed;
+alter table public.booking_rate_limits
+  add constraint booking_rate_limits_scope_allowed
+  check (scope in ('services', 'availability', 'hold', 'status', 'release', 'payment'));
+
 create or replace function public.check_booking_rate_limit(p_scope text, p_fingerprint_hash text) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare window_size interval; declare maximum_requests integer; declare current_count integer;
@@ -31,10 +39,7 @@ create function public.can_mutate_finance() returns boolean
 language sql stable security definer set search_path = '' as $$
   select (select auth.uid()) is not null
     and public.has_any_role(array['owner', 'finance']::public.app_role[])
-    and (
-      not public.has_any_role(array['owner']::public.app_role[])
-      or public.current_session_is_aal2()
-    );
+    and public.current_session_is_aal2();
 $$;
 revoke all on function public.can_mutate_finance() from public;
 grant execute on function public.can_mutate_finance() to authenticated;

@@ -11,6 +11,7 @@ test("payment SQL provides atomic snapshots, idempotency and late-payment safety
   assert.match(sql, /requires_manual_reconciliation/);
   assert.match(sql, /notification_outbox/);
   assert.match(sql, /current_session_is_aal2/);
+  assert.match(sql, /booking_rate_limits_scope_allowed[\s\S]*?'payment'/);
   assert.doesNotMatch(sql, /create policy payments_finance_write/);
   assert.match(sql, /state = 'HELD' for update/);
   assert.doesNotMatch(sql.match(/create or replace function public\.release_booking_hold[\s\S]*?end; \$\$/)?.[0] ?? "", /PAYMENT_PENDING/);
@@ -24,7 +25,24 @@ test("ITN authority is isolated from client routes and hashes receipts", async (
   assert.match(itn, /AbortSignal\.timeout\(5_000\)/);
   assert.match(itn, /process_payfast_itn/);
   assert.match(itn, /receiptHash\(raw\)/);
+  assert.match(itn, /REMOTE_VALIDATION_UNAVAILABLE/);
+  assert.match(itn, /PROCESSING_REJECTED/);
+  assert.match(itn, /rejectedReceiptId\(hash\)/);
   assert.doesNotMatch(itn, /console\.(log|error)|payload:\s*raw/);
+});
+
+test("finance mutations require AAL2 in the database, action and UI", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/202607150008_payfast_legal_operations.sql", import.meta.url), "utf8");
+  const action = await readFile(new URL("../app/admin/finance-actions.ts", import.meta.url), "utf8");
+  const access = await readFile(new URL("../lib/payment/admin.ts", import.meta.url), "utf8");
+  const layout = await readFile(new URL("../app/admin/(protected)/layout.tsx", import.meta.url), "utf8");
+  const boundary = sql.match(/create function public\.can_mutate_finance[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(boundary, /and public\.current_session_is_aal2\(\)/);
+  assert.doesNotMatch(boundary, /not public\.has_any_role/);
+  assert.match(action, /mfaData\.currentLevel !== "aal2"/);
+  assert.doesNotMatch(action, /roles\.includes\("owner"\)/);
+  assert.match(access, /editable = !error && data\.currentLevel === "aal2"/);
+  assert.match(layout, /\["owner", "publisher", "finance"\]/);
 });
 
 test("legal CMS seeds remain typed content and expose all required routes", async () => {

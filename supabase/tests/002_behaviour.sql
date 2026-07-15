@@ -225,8 +225,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000005","role":"authenticated"}', true);
 select is((select count(*) from public.payments), 1::bigint, 'finance user can read payments');
 select ok(
-  public.test_operation_changes_rows($sql$update public.payments set state = 'PAID', paid_at = now() where id = '35000000-0000-0000-0000-000000000001'$sql$),
-  'finance user can update payment state'
+  not public.test_operation_changes_rows($sql$update public.payments set state = 'PAID', paid_at = now() where id = '35000000-0000-0000-0000-000000000001'$sql$),
+  'finance user cannot bypass constrained finance RPCs with direct payment writes'
 );
 select ok(
   not public.test_operation_changes_rows($sql$update public.bookings set state = 'COMPLETED' where id = '33000000-0000-0000-0000-000000000001'$sql$),
