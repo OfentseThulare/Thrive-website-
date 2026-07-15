@@ -1,34 +1,37 @@
 # Thrive Through Cancer
 
-The first production ready website build for Thrive Through Cancer, a division of Inheritance Academy.
+The multi page application and constrained content platform for Thrive Through Cancer, a division of Inheritance Academy.
 
-## Local preview
+## Foundation
 
-Run a static web server from the project root:
+The application uses Next.js App Router, React, TypeScript and custom CSS. Supabase provides the planned Postgres, Auth and Storage foundation. Public content remains reviewable through validated seed data when Supabase has not been configured.
+
+No service role key belongs in this repository or in a browser visible environment variable.
+
+## Local development
+
+Use Node.js 22 or newer.
 
 ```sh
-python3 -m http.server 4173
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-Then open `http://localhost:4173`.
+The public home page works without Supabase settings. Set both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to use published database content. A partial or malformed pair is rejected.
 
-## Architecture
+## Checks
 
-The site is deliberately dependency free. It uses semantic HTML, modern CSS and a small progressive JavaScript layer. It can be hosted on Vercel, Netlify, GitHub Pages or any conventional web host.
+```sh
+npm run typecheck
+npm test
+npm run build
+```
 
-## Production integrations still required
+`npm test` verifies the environment boundary and migration safety invariants. The executable database assertions in `supabase/tests/001_foundation.sql` are intended to run after applying the migration to a local or preview Supabase database.
 
-The booking interface is complete, but it does not transmit personal information until a secure form endpoint and the client's public contact details are supplied. PayFast, card and EFT choices are represented in the booking journey without exposing or inventing payment credentials.
+## Deferred integrations
 
-Before launch, connect:
+CMS mutations, booking persistence, Google Calendar synchronisation and PayFast checkout remain disabled until their implementation tasks and production credentials are complete. The application must not simulate successful bookings or payments.
 
-* a booking or secure form endpoint
-* PayFast merchant details
-* EFT instructions
-* a privacy policy and cancellation policy
-* approved certification logos
-* final source references for medical statistics
-
-## Design documentation
-
-The approved design and implementation plan are in `docs/plans`.
+Approved design and implementation decisions are in `docs/plans`.
