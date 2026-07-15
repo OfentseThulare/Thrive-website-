@@ -79,3 +79,31 @@ test("site URL rejects plaintext remote origins", () => {
     "thrivethroughcancer.co.za",
   );
 });
+
+test("production site URL fails closed instead of emitting localhost", () => {
+  assert.throws(() => parseSiteUrl({}, "production"), /required in production/);
+  assert.throws(
+    () => parseSiteUrl({ NEXT_PUBLIC_SITE_URL: "http://localhost:3000" }, "production"),
+    /public HTTPS origin/,
+  );
+  assert.throws(
+    () => parseSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://localhost:3000" }, "production"),
+    /public HTTPS origin/,
+  );
+  assert.equal(
+    parseSiteUrl(
+      { NEXT_PUBLIC_SITE_URL: "https://thrivethroughcancer.co.za" },
+      "production",
+    ).origin,
+    "https://thrivethroughcancer.co.za",
+  );
+});
+
+test("site URL accepts origins only", () => {
+  assert.throws(() =>
+    parseSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://user:password@example.org" }, "production"),
+  );
+  assert.throws(() =>
+    parseSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://example.org/subpath" }, "production"),
+  );
+});

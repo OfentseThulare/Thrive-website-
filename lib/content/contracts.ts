@@ -36,13 +36,28 @@ export const safeHrefSchema = z
   .max(300)
   .refine(isSafeHref, "Link must use a safe internal path or an approved external scheme");
 
+function isSafeLocalImageSource(value: string) {
+  if (!/^\/images\/[A-Za-z0-9][A-Za-z0-9/_.-]*\.(avif|jpe?g|png|webp)$/i.test(value)) {
+    return false;
+  }
+
+  return !value.split("/").some((segment) => segment === ".." || segment === ".");
+}
+
+export const safeImageSourceSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .refine(isSafeLocalImageSource, "Image must use a safe local path under /images");
+
 const linkSchema = z.object({
   label: z.string().trim().min(1).max(80),
   href: safeHrefSchema,
 });
 
 const imageSchema = z.object({
-  src: z.string().trim().min(1).max(500),
+  src: safeImageSourceSchema,
   alt: z.string().trim().min(1).max(240),
   width: z.number().int().positive(),
   height: z.number().int().positive(),

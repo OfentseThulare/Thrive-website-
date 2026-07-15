@@ -246,8 +246,9 @@ create table public.bookings (
   updated_at timestamptz not null default now(),
   check (ends_at > starts_at),
   check ((state <> 'HELD') or hold_expires_at is not null),
+  -- The current practice has one bookable practitioner. All active sessions
+  -- therefore share one availability resource, regardless of service type.
   exclude using gist (
-    service_id with =,
     tstzrange(starts_at, ends_at, '[)') with &&
   ) where (state in ('HELD', 'PAYMENT_PENDING', 'PAID', 'CALENDAR_SYNC_PENDING', 'CONFIRMED'))
 );

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { pageContentSchema, type PageContent } from "./contracts";
 import { seedPages } from "./seed";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -13,7 +15,9 @@ type VersionRow = {
   snapshot: unknown;
 };
 
-export async function getPublishedPage(slug: string): Promise<PageContent | null> {
+export const getPublishedPage = cache(async function getPublishedPage(
+  slug: string,
+): Promise<PageContent | null> {
   const supabase = await createServerSupabaseClient();
 
   if (!supabase) {
@@ -49,4 +53,4 @@ export async function getPublishedPage(slug: string): Promise<PageContent | null
   }
 
   return publishedPage;
-}
+});

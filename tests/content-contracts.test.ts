@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { safeHrefSchema } from "../lib/content/contracts.ts";
+import { safeHrefSchema, safeImageSourceSchema } from "../lib/content/contracts.ts";
 
 test("CMS links accept safe local and explicit external destinations", () => {
   const accepted = [
@@ -32,5 +32,37 @@ test("CMS links reject executable, ambiguous and credential-bearing destinations
 
   for (const href of rejected) {
     assert.equal(safeHrefSchema.safeParse(href).success, false, href);
+  }
+});
+
+test("CMS images accept only local image assets", () => {
+  const accepted = [
+    "/images/renny-portrait-seated.jpg",
+    "/images/resources/quiet-room.webp",
+    "/images/landscape_01.avif",
+  ];
+
+  for (const src of accepted) {
+    assert.equal(safeImageSourceSchema.parse(src), src);
+  }
+});
+
+test("CMS images reject remote, executable and ambiguous sources", () => {
+  const rejected = [
+    "https://example.org/image.jpg",
+    "https://user:password@example.org/image.jpg",
+    "//example.org/image.jpg",
+    "data:image/svg+xml,<svg></svg>",
+    "javascript:alert(1)",
+    "/images/../private.jpg",
+    "/images/%2e%2e/private.jpg",
+    "/images\\portrait.jpg",
+    "/public/images/portrait.jpg",
+    "/images/portrait.svg",
+    "/images/portrait.jpg?cache=1",
+  ];
+
+  for (const src of rejected) {
+    assert.equal(safeImageSourceSchema.safeParse(src).success, false, src);
   }
 });

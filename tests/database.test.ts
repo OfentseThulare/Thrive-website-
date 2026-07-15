@@ -50,9 +50,20 @@ test("booking overlap and integration idempotency are enforced in Postgres", asy
   const migration = await readFile(migrationUrl, "utf8");
 
   assert.match(migration, /exclude using gist/);
-  assert.match(migration, /tstzrange\(starts_at, ends_at, '\[\)'\) with &&/);
+  assert.match(migration, /exclude using gist \(\s*tstzrange\(starts_at, ends_at, '\[\)'\) with &&/s);
+  assert.doesNotMatch(migration, /exclude using gist \(\s*service_id with =/s);
   assert.match(migration, /idempotency_key uuid not null unique/);
   assert.match(migration, /unique \(provider, provider_event_id\)/);
+});
+
+test("published page reads are memoised per React server request", async () => {
+  const repository = await readFile(
+    new URL("../lib/content/repository.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(repository, /import \{ cache \} from "react"/);
+  assert.match(repository, /getPublishedPage = cache\(/);
 });
 
 test("site asset storage has explicit read and staff mutation policies", async () => {
@@ -115,4 +126,23 @@ test("database execution test checks catalog RLS, policies and overlap protectio
   assert.match(sql, /pg_policies/);
   assert.match(sql, /contype = 'x'/);
   assert.match(sql, /storage.*objects/s);
+});
+
+test("Supabase behavioural suite exercises every operational role and cross-service overlap", async () => {
+  const sql = await readFile(new URL("../supabase/tests/002_behaviour.sql", import.meta.url), "utf8");
+
+  assert.match(sql, /create extension if not exists pgtap/);
+  assert.match(sql, /set local role anon/);
+  assert.match(sql, /set local role authenticated/);
+  for (const role of ["editor", "publisher", "auditor", "scheduler", "finance"]) {
+    assert.match(sql, new RegExp(`'${role}'`));
+  }
+  assert.match(sql, /test_operation_is_denied/);
+  assert.match(sql, /test_operation_has_overlap/);
+  assert.match(sql, /different services for the single practitioner/);
+  assert.match(sql, /'health-coaching'/);
+  assert.match(sql, /'counselling'/);
+  assert.match(sql, /select plan\(21\)/);
+  assert.match(sql, /select \* from finish\(\)/);
+  assert.match(sql, /rollback/);
 });
