@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { pageDraftInputSchema } from "../lib/cms/schemas.ts";
+import { contentBlockSchema } from "../lib/content/contracts.ts";
 
 const migration = new URL("../supabase/migrations/202607150006_cms_audit_and_bootstrap_rotation.sql", import.meta.url);
 
@@ -78,4 +79,31 @@ test("the executable final pgTAP suite covers the upgrade and security cases", a
   assert.match(suite, /rotation is permanently refused after completion/);
   assert.match(suite, /CMS_INVITATION_USER_EXISTS/);
   assert.match(suite, /repeated slash canonical paths are rejected/);
+});
+
+test("approved feature list layout survives the recursive publication guard", async () => {
+  const sql = await readFile(migration, "utf8");
+  const suite = await readFile(new URL("../supabase/tests/006_cms_audit_and_bootstrap_rotation.sql", import.meta.url), "utf8");
+  const valid = {
+    blockType: "feature_list",
+    eyebrow: "Support",
+    heading: "Feature support",
+    items: [
+      { title: "One", body: "First" },
+      { title: "Two", body: "Second" },
+    ],
+    layout: "grid",
+    tone: "cream",
+  };
+
+  assert.equal(contentBlockSchema.safeParse(valid).success, true);
+  assert.equal(contentBlockSchema.safeParse({ ...valid, layout: "columns" }).success, false);
+  assert.match(sql, /lower\(object_key\) = 'layout'[\s\S]*?blockType[\s\S]*?feature_list[\s\S]*?'grid','stack','gems'/);
+  assert.match(sql, /not public\.validate_cms_block\(value\)/);
+  assert.match(sql, /'html','rawhtml','raw_html','script','iframe','style','css'/);
+  assert.match(suite, /publish_page[\s\S]*?approved feature list layout publishes successfully/);
+  assert.match(suite, /forbidden executable feature content cannot publish/);
+  assert.match(suite, /unsupported feature list layouts cannot enter the draft table/);
+  assert.match(suite, /arbitrary layout JSON remains forbidden/);
+  assert.match(suite, /forbidden executable content still fails/);
 });

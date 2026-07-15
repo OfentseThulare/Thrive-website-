@@ -337,6 +337,52 @@ $$;
 
 revoke all on function public.provision_invited_staff() from public;
 
+-- The exact block schema permits one controlled layout field on feature lists.
+-- Keep the recursive executable-content guard, but do not let the legacy broad
+-- key check reject that approved enum. Every other layout key remains forbidden.
+create or replace function public.cms_json_has_forbidden_keys(value jsonb)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  item jsonb;
+  object_key text;
+  object_value jsonb;
+  scalar_text text;
+begin
+  if jsonb_typeof(value) = 'object' then
+    for object_key, object_value in select * from jsonb_each(value) loop
+      if lower(object_key) = 'layout' then
+        if coalesce(value->>'blockType','') <> 'feature_list'
+          or jsonb_typeof(object_value) <> 'string'
+          or object_value #>> '{}' not in ('grid','stack','gems')
+          or not public.validate_cms_block(value) then
+          return true;
+        end if;
+      elsif lower(object_key) in ('html','rawhtml','raw_html','script','iframe','style','css') then
+        return true;
+      end if;
+      if public.cms_json_has_forbidden_keys(object_value) then return true; end if;
+    end loop;
+  elsif jsonb_typeof(value) = 'array' then
+    for item in select * from jsonb_array_elements(value) loop
+      if public.cms_json_has_forbidden_keys(item) then return true; end if;
+    end loop;
+  elsif jsonb_typeof(value) = 'string' then
+    scalar_text := value #>> '{}';
+    if scalar_text ~* '<\s*/?\s*(script|iframe|style|link|object|embed|html)\y|javascript\s*:|data\s*:\s*text/html' then
+      return true;
+    end if;
+  end if;
+  return false;
+end;
+$$;
+
+revoke all on function public.cms_json_has_forbidden_keys(jsonb) from public;
+grant execute on function public.cms_json_has_forbidden_keys(jsonb) to authenticated;
+
 -- Match the public metadata policy exactly, including no repeated or trailing slashes.
 create or replace function public.validate_cms_snapshot(snapshot jsonb)
 returns boolean

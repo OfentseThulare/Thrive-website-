@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(30);
+select plan(38);
 
 select matches(
   pg_get_constraintdef((
@@ -276,6 +276,76 @@ select set_config(
   true
 );
 set local role authenticated;
+insert into public.pages(id,slug,title,description,status,created_by,updated_by)
+values(
+  '72000000-0000-0000-0000-000000000002','feature-layout-page','Feature layout page',
+  'Approved feature layout description','draft',
+  '71000000-0000-0000-0000-000000000003','71000000-0000-0000-0000-000000000003'
+);
+insert into public.page_drafts(page_id,title,description,seo,visible)
+values(
+  '72000000-0000-0000-0000-000000000002','Feature layout page',
+  'Approved feature layout description','{}',true
+);
+insert into public.sections(id,page_slug,block_type,position,visible,content)
+values(
+  '73000000-0000-0000-0000-000000000003','feature-layout-page','feature_list',0,true,
+  '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"First"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}'
+);
+select ok(
+  public.publish_page(
+    '72000000-0000-0000-0000-000000000002',
+    '{"slug":"feature-layout-page","title":"Feature layout page","description":"Approved feature layout description","status":"published","seo":{},"sections":[{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"First"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}]}'::jsonb,
+    'Approved layout regression'
+  ) is not null,
+  'approved feature list layout publishes successfully'
+);
+insert into public.pages(id,slug,title,description,status,created_by,updated_by)
+values(
+  '72000000-0000-0000-0000-000000000003','forbidden-feature-page','Forbidden feature page',
+  'Forbidden feature description','draft',
+  '71000000-0000-0000-0000-000000000003','71000000-0000-0000-0000-000000000003'
+);
+insert into public.page_drafts(page_id,title,description,seo,visible)
+values(
+  '72000000-0000-0000-0000-000000000003','Forbidden feature page',
+  'Forbidden feature description','{}',true
+);
+insert into public.sections(id,page_slug,block_type,position,visible,content)
+values(
+  '73000000-0000-0000-0000-000000000004','forbidden-feature-page','feature_list',0,true,
+  '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"<script>alert(1)</script>"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}'
+);
+select throws_ok(
+  $$select public.publish_page(
+    '72000000-0000-0000-0000-000000000003',
+    '{"slug":"forbidden-feature-page","title":"Forbidden feature page","description":"Forbidden feature description","status":"published","seo":{},"sections":[{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"<script>alert(1)</script>"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}]}'::jsonb,
+    'Forbidden content regression'
+  )$$,
+  '22023',
+  'CMS_INVALID_OR_STALE_SNAPSHOT',
+  'forbidden executable feature content cannot publish'
+);
+create function public.test_unsupported_feature_layout_is_rejected()
+returns boolean
+language plpgsql
+set search_path = ''
+as $$
+begin
+  insert into public.sections(id,page_slug,block_type,position,visible,content)
+  values(
+      '73000000-0000-0000-0000-000000000005','forbidden-feature-page','feature_list',1,true,
+      '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"First"},{"title":"Two","body":"Second"}],"layout":"columns","tone":"cream"}'
+  );
+  return false;
+exception when check_violation then
+  return true;
+end;
+$$;
+select ok(
+  public.test_unsupported_feature_layout_is_rejected(),
+  'unsupported feature list layouts cannot enter the draft table'
+);
 select throws_ok(
   $$select public.create_staff_invitation('EXISTING@example.test','editor',now() + interval '1 day')$$,
   'P0001',
@@ -321,6 +391,30 @@ select ok(
     '{"slug":"canonical-test","title":"Canonical test","description":"Canonical description","status":"published","seo":{"canonicalPath":"/cancer--support"},"sections":[{"blockType":"introduction","eyebrow":"SEO","heading":"Heading","body":["Body"],"align":"left"}]}'
   ),
   'non-canonical hyphen sequences are rejected'
+);
+
+select ok(
+  not public.cms_json_has_forbidden_keys(
+    '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"First"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}'
+  ),
+  'the recursive guard permits an approved feature list layout enum'
+);
+select ok(
+  public.cms_json_has_forbidden_keys('{"layout":{"columns":2}}')
+  and public.cms_json_has_forbidden_keys('{"blockType":"feature_list","layout":"grid","custom":true}'),
+  'arbitrary layout JSON remains forbidden'
+);
+select ok(
+  not public.validate_cms_block(
+    '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"First"},{"title":"Two","body":"Second"}],"layout":"columns","tone":"cream"}'
+  ),
+  'unsupported feature list layout values fail the exact block validator'
+);
+select ok(
+  public.cms_json_has_forbidden_keys(
+    '{"blockType":"feature_list","eyebrow":"Support","heading":"Feature support","items":[{"title":"One","body":"<script>alert(1)</script>"},{"title":"Two","body":"Second"}],"layout":"grid","tone":"cream"}'
+  ),
+  'forbidden executable content still fails the recursive publication guard'
 );
 
 select * from finish();
