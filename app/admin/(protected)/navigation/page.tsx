@@ -1,6 +1,5 @@
-import { publishNavigationAction } from "@/app/admin/actions";
 import { NavigationForm } from "@/components/admin/cms-forms";
-import { SubmitButton } from "@/components/admin/submit-button";
+import { NavigationPublicationForm } from "@/components/admin/privileged-action-forms";
 import { requireCmsIdentity } from "@/lib/cms/auth";
 import { hasCmsRole } from "@/lib/cms/permissions";
 import { requireCmsDatabase } from "@/lib/cms/queries";
@@ -41,13 +40,7 @@ export default async function NavigationPage() {
                   ) : null}
                 </div>
                 <span className={`admin-status admin-status-${item.status}`}>{item.status}</span>
-                {canPublish ? (
-                  <form action={publishNavigationAction}>
-                    <input type="hidden" name="itemId" value={item.id} />
-                    <input type="hidden" name="makePublic" value={item.status === "published" ? "false" : "true"} />
-                    <SubmitButton tone="quiet">{item.status === "published" ? "Unpublish to draft" : "Publish"}</SubmitButton>
-                  </form>
-                ) : null}
+                {canPublish ? <NavigationPublicationForm itemId={item.id} published={item.status === "published"} /> : null}
               </li>
             ))}
           </ul>

@@ -204,11 +204,12 @@ export async function unenrolMfaAction(
     }
     const { error } = await supabase.auth.mfa.unenroll({ factorId: verifiedFactor.id });
     if (error) throw new Error("CMS_MFA_UNENROL_FAILED");
-    revalidatePath("/admin/security");
-    return { status: "success", message: "The authenticator factor was removed." };
+    const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+    if (signOutError) throw new Error("CMS_MFA_SIGN_OUT_FAILED");
   } catch (error) {
     return safeCmsError(error);
   }
+  redirect("/admin/login?reason=security-reset");
 }
 
 export async function savePageDraftAction(
@@ -261,8 +262,8 @@ export async function saveSectionAction(
     const mutation = input.sectionId
       ? supabase.from("sections").update(record).eq("id", input.sectionId)
       : supabase.from("sections").insert(record);
-    const { error } = await mutation;
-    if (error) throw new Error("CMS_SECTION_SAVE_FAILED");
+    const { data: saved, error } = await mutation.select("id").maybeSingle();
+    if (error || !saved) throw new Error("CMS_SECTION_SAVE_FAILED");
     await audit(supabase, identity.userId, "section.draft_saved", "page", input.pageSlug, {
       sectionId: input.sectionId ?? "new",
       blockType: input.content.blockType,
@@ -274,13 +275,21 @@ export async function saveSectionAction(
   }
 }
 
-export async function deleteSectionAction(formData: FormData) {
-  const input = deleteSectionInputSchema.parse(values(formData));
-  const { supabase, identity } = await authorisedClient(contentRoles);
-  const { error } = await supabase.from("sections").delete().eq("id", input.sectionId);
-  if (error) throw new Error("CMS_SECTION_DELETE_FAILED");
-  await audit(supabase, identity.userId, "section.draft_deleted", "section", input.sectionId);
-  revalidatePath(`/admin/preview/${input.pageSlug}`);
+export async function deleteSectionAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = deleteSectionInputSchema.parse(values(formData));
+    const { supabase, identity } = await authorisedClient(contentRoles);
+    const { data: deleted, error } = await supabase.from("sections").delete().eq("id", input.sectionId).select("id").maybeSingle();
+    if (error || !deleted) throw new Error("CMS_SECTION_DELETE_FAILED");
+    await audit(supabase, identity.userId, "section.draft_deleted", "section", input.sectionId);
+    revalidatePath(`/admin/preview/${input.pageSlug}`);
+    return { status: "success", message: "Draft section removed." } satisfies CmsActionState;
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
 export async function publishPageAction(
@@ -304,15 +313,23 @@ export async function publishPageAction(
   }
 }
 
-export async function restoreVersionAction(formData: FormData) {
-  const input = restoreVersionInputSchema.parse(values(formData));
-  const { supabase } = await authorisedClient(publishingRoles);
-  const { error } = await supabase.rpc("restore_page_version", {
-    target_page_id: input.pageId,
-    target_version_id: input.versionId,
-  });
-  if (error) throw new Error("CMS_RESTORE_FAILED");
-  revalidatePath("/", "layout");
+export async function restoreVersionAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = restoreVersionInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(publishingRoles);
+    const { error } = await supabase.rpc("restore_page_version", {
+      target_page_id: input.pageId,
+      target_version_id: input.versionId,
+    });
+    if (error) throw new Error("CMS_RESTORE_FAILED");
+    revalidatePath("/", "layout");
+    return { status: "success", message: "The selected version is live." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
 export async function saveReusableEntryAction(
@@ -333,8 +350,8 @@ export async function saveReusableEntryAction(
     const mutation = input.entryId
       ? supabase.from("reusable_entries").update(record).eq("id", input.entryId)
       : supabase.from("reusable_entries").insert(record);
-    const { error } = await mutation;
-    if (error) throw new Error("CMS_ENTRY_SAVE_FAILED");
+    const { data: saved, error } = await mutation.select("id").maybeSingle();
+    if (error || !saved) throw new Error("CMS_ENTRY_SAVE_FAILED");
     await audit(supabase, identity.userId, "reusable_entry.draft_saved", "reusable_entry", input.entryId ?? input.key);
     revalidatePath("/admin/reusable");
     return { status: "success", message: "Reusable draft saved." };
@@ -364,8 +381,8 @@ export async function saveNavigationAction(
     const mutation = input.itemId
       ? supabase.from("navigation_items").update(dbRecord).eq("id", input.itemId)
       : supabase.from("navigation_items").insert(dbRecord);
-    const { error } = await mutation;
-    if (error) throw new Error("CMS_NAVIGATION_SAVE_FAILED");
+    const { data: saved, error } = await mutation.select("id").maybeSingle();
+    if (error || !saved) throw new Error("CMS_NAVIGATION_SAVE_FAILED");
     await audit(supabase, identity.userId, "navigation.draft_saved", "navigation_item", input.itemId ?? input.href);
     revalidatePath("/admin/navigation");
     return { status: "success", message: "Navigation draft saved. A publisher must make it live." };
@@ -374,15 +391,23 @@ export async function saveNavigationAction(
   }
 }
 
-export async function publishNavigationAction(formData: FormData) {
-  const input = navigationPublicationInputSchema.parse(values(formData));
-  const { supabase } = await authorisedClient(publishingRoles);
-  const { error } = await supabase.rpc("set_navigation_publication", {
-    target_item_id: input.itemId,
-    make_public: input.makePublic,
-  });
-  if (error) throw new Error("CMS_NAVIGATION_PUBLISH_FAILED");
-  revalidatePath("/", "layout");
+export async function publishNavigationAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = navigationPublicationInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(publishingRoles);
+    const { error } = await supabase.rpc("set_navigation_publication", {
+      target_item_id: input.itemId,
+      make_public: input.makePublic,
+    });
+    if (error) throw new Error("CMS_NAVIGATION_PUBLISH_FAILED");
+    revalidatePath("/", "layout");
+    return { status: "success", message: input.makePublic ? "Navigation item published." : "Navigation item returned to draft." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
 export async function uploadAssetAction(
@@ -396,7 +421,7 @@ export async function uploadAssetAction(
     const file = validateAssetFile(rawFile);
     const { supabase, identity } = await authorisedClient(contentRoles);
     const extensionByMime: Record<string, string> = {
-      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/avif": "avif", "application/pdf": "pdf",
+      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/avif": "avif",
     };
     const extension = extensionByMime[file.type];
     const storagePath = `${identity.userId}/${randomUUID()}.${extension}`;
@@ -426,32 +451,48 @@ export async function uploadAssetAction(
     }
     await audit(supabase, identity.userId, "asset.draft_uploaded", "asset", storagePath, { mimeType: file.type, byteSize: file.size });
     revalidatePath("/admin/assets");
-    return { status: "success", message: "Asset uploaded privately. It is not public until approved." };
+    return { status: "success", message: "Image uploaded privately. It is not public until approved." };
   } catch (error) {
     return safeCmsError(error);
   }
 }
 
-export async function manageRoleAction(formData: FormData) {
-  const input = roleManagementInputSchema.parse(values(formData));
-  const { supabase } = await authorisedClient(["owner"]);
-  const { error } = await supabase.rpc("manage_user_role", {
-    target_user_id: input.userId,
-    target_role: input.role,
-    grant_role: input.operation === "grant",
-  });
-  if (error) throw new Error("CMS_ROLE_MANAGEMENT_FAILED");
-  revalidatePath("/admin/roles");
+export async function manageRoleAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = roleManagementInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(["owner"]);
+    const { error } = await supabase.rpc("manage_user_role", {
+      target_user_id: input.userId,
+      target_role: input.role,
+      grant_role: input.operation === "grant",
+    });
+    if (error) throw new Error("CMS_ROLE_MANAGEMENT_FAILED");
+    revalidatePath("/admin/roles");
+    return { status: "success", message: "Role assignment updated." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
-export async function setContentPublicationAction(formData: FormData) {
-  const input = contentPublicationInputSchema.parse(values(formData));
-  const { supabase } = await authorisedClient(publishingRoles);
-  const rpc = input.entity === "asset" ? "set_asset_publication" : "set_reusable_publication";
-  const { error } = await supabase.rpc(rpc, { target_id: input.entityId, make_public: input.makePublic });
-  if (error) throw new Error("CMS_PUBLICATION_STATE_FAILED");
-  revalidatePath("/", "layout");
-  revalidatePath(input.entity === "asset" ? "/admin/assets" : "/admin/reusable");
+export async function setContentPublicationAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = contentPublicationInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(publishingRoles);
+    const rpc = input.entity === "asset" ? "set_asset_publication" : "set_reusable_publication";
+    const { error } = await supabase.rpc(rpc, { target_id: input.entityId, make_public: input.makePublic });
+    if (error) throw new Error("CMS_PUBLICATION_STATE_FAILED");
+    revalidatePath("/", "layout");
+    revalidatePath(input.entity === "asset" ? "/admin/assets" : "/admin/reusable");
+    return { status: "success", message: input.makePublic ? "Content published." : "Content returned to draft." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
 export async function createStaffInvitationAction(
@@ -487,56 +528,36 @@ export async function createStaffInvitationAction(
   }
 }
 
-export async function revokeStaffInvitationAction(formData: FormData) {
-  const input = revokeInvitationInputSchema.parse(values(formData));
-  const { supabase } = await authorisedClient(["owner"]);
-  const { error } = await supabase.rpc("revoke_staff_invitation", { target_id: input.invitationId });
-  if (error) throw new Error("CMS_INVITATION_REVOKE_FAILED");
-  revalidatePath("/admin/invitations");
+export async function revokeStaffInvitationAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = revokeInvitationInputSchema.parse(values(formData));
+    const { supabase } = await authorisedClient(["owner"]);
+    const { error } = await supabase.rpc("revoke_staff_invitation", { target_id: input.invitationId });
+    if (error) throw new Error("CMS_INVITATION_REVOKE_FAILED");
+    revalidatePath("/admin/invitations");
+    return { status: "success", message: "Invitation revoked." };
+  } catch (error) {
+    return safeCmsError(error);
+  }
 }
 
-export async function initialiseCmsContentAction() {
-  const { supabase, identity } = await authorisedClient(["owner"]);
-  const { data: existingPages, error: existingError } = await supabase.from("pages").select("slug");
-  if (existingError) throw new Error("CMS_SEED_LOOKUP_FAILED");
-  const existingSlugs = new Set((existingPages ?? []).map((page) => page.slug));
-  let importedCount = 0;
-  for (const page of seedPages.values()) {
-    if (existingSlugs.has(page.slug)) continue;
-    const { data: inserted, error: pageError } = await supabase.from("pages").insert({
-      slug: page.slug,
-      title: page.title,
-      description: page.description,
-      status: "draft",
-      created_by: identity.userId,
-      updated_by: identity.userId,
-    }).select("id").single();
-    if (pageError || !inserted) throw new Error("CMS_SEED_PAGE_FAILED");
-    const { error: draftError } = await supabase.from("page_drafts").insert({
-      page_id: inserted.id,
-      title: page.title,
-      description: page.description,
-      seo: {},
-      visible: true,
-      updated_by: identity.userId,
-    });
-    if (draftError) throw new Error("CMS_SEED_DRAFT_FAILED");
-    const { error: sectionError } = await supabase.from("sections").insert(page.sections.map((content, position) => ({
-      page_slug: page.slug,
-      block_type: content.blockType,
-      schema_version: 1,
-      position,
-      visible: true,
-      variant: "default",
-      content,
-      created_by: identity.userId,
-      updated_by: identity.userId,
-    })));
-    if (sectionError) throw new Error("CMS_SEED_SECTION_FAILED");
-    importedCount += 1;
+export async function initialiseCmsContentAction(
+  _previous: CmsActionState,
+  _formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const { supabase } = await authorisedClient(["owner"]);
+    const payload = Array.from(seedPages.values());
+    const { data, error } = await supabase.rpc("import_initial_cms_seed", { seed_payload: payload });
+    if (error || !data) throw new Error("CMS_SEED_IMPORT_FAILED");
+    revalidatePath("/admin", "layout");
+    return { status: "success", message: "Approved seed content imported or repaired atomically." };
+  } catch (error) {
+    return safeCmsError(error);
   }
-  await audit(supabase, identity.userId, "cms.seed_imported", "cms", "initial-content", { pageCount: importedCount });
-  revalidatePath("/admin", "layout");
 }
 
 export async function assertAuditAccessAction() {

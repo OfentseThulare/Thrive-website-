@@ -207,7 +207,9 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   assert.match(hardening, /alter table public\.staff_invitations enable row level security/);
   assert.match(hardening, /alter table public\.staff_invitations force row level security/);
   assert.match(hardening, /create policy staff_invitations_owner_read/);
-  assert.match(hardening, /role public\.app_role not null check \(role <> 'owner'\)/);
+  assert.match(hardening, /role public\.app_role not null/);
+  assert.match(hardening, /check \(role <> 'owner' or invited_by is null\)/);
+  assert.match(hardening, /bootstrap_first_owner_invitation/);
   assert.match(hardening, /INVITATION_REQUIRED/);
   assert.match(hardening, /provision_invited_staff_after_signup/);
   assert.doesNotMatch(hardening, /invitation_email_is_eligible/);

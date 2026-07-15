@@ -12,6 +12,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
+    "cms:bootstrap-owner": "node scripts/bootstrap-owner.mjs",
     "db:test": "node --test tests/database.test.ts",
     "check": "npm run typecheck && npm test && NEXT_PUBLIC_SITE_URL=https://thrivethroughcancer.co.za npm run build"
   },

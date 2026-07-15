@@ -1,6 +1,5 @@
-import { setContentPublicationAction } from "@/app/admin/actions";
 import { ReusableEntryForm } from "@/components/admin/cms-forms";
-import { SubmitButton } from "@/components/admin/submit-button";
+import { ContentPublicationForm } from "@/components/admin/privileged-action-forms";
 import { requireCmsIdentity } from "@/lib/cms/auth";
 import { hasCmsRole } from "@/lib/cms/permissions";
 import { requireCmsDatabase } from "@/lib/cms/queries";
@@ -44,14 +43,7 @@ export default async function ReusableContentPage() {
                 ) : canEdit && entry.status === "published" ? (
                   <p className="admin-locked-note">{canPublish ? "Unpublish this entry to draft before editing it." : "A publisher must unpublish this entry to draft before it can be edited."}</p>
                 ) : null}
-                {canPublish ? (
-                  <form action={setContentPublicationAction}>
-                    <input type="hidden" name="entity" value="reusable_entry" />
-                    <input type="hidden" name="entityId" value={entry.id} />
-                    <input type="hidden" name="makePublic" value={entry.status === "published" ? "false" : "true"} />
-                    <SubmitButton tone="quiet">{entry.status === "published" ? "Unpublish to draft" : "Publish entry"}</SubmitButton>
-                  </form>
-                ) : null}
+                {canPublish ? <ContentPublicationForm entity="reusable_entry" entityId={entry.id} published={entry.status === "published"} publishLabel="Publish entry" /> : null}
               </article>
             ))}
           </div>

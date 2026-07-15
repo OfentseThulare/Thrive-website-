@@ -454,8 +454,8 @@ grant execute on function public.set_asset_publication(uuid,boolean) to authenti
 create table public.staff_invitations (
   id uuid primary key default gen_random_uuid(),
   email text not null check (email = lower(trim(email)) and email ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'),
-  role public.app_role not null check (role <> 'owner'),
-  invited_by uuid not null references auth.users(id) on delete restrict,
+  role public.app_role not null,
+  invited_by uuid references auth.users(id) on delete restrict,
   expires_at timestamptz not null,
   consumed_at timestamptz,
   consumed_by uuid references auth.users(id) on delete set null,
@@ -463,6 +463,7 @@ create table public.staff_invitations (
   revoked_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   check (expires_at > created_at),
+  check (role <> 'owner' or invited_by is null),
   check (not (consumed_at is not null and revoked_at is not null))
 );
 create unique index staff_invitations_pending_email_idx on public.staff_invitations(lower(email))
@@ -471,6 +472,63 @@ alter table public.staff_invitations enable row level security;
 alter table public.staff_invitations force row level security;
 create policy staff_invitations_owner_read on public.staff_invitations for select to authenticated
 using (public.has_any_role(array['owner']::public.app_role[]));
+
+create table public.cms_owner_bootstrap (
+  singleton boolean primary key default true check (singleton),
+  invitation_id uuid not null unique references public.staff_invitations(id) on delete restrict,
+  requested_email text not null,
+  requested_at timestamptz not null default now(),
+  completed_at timestamptz,
+  completed_by uuid unique references auth.users(id) on delete restrict
+);
+alter table public.cms_owner_bootstrap enable row level security;
+alter table public.cms_owner_bootstrap force row level security;
+
+create function public.bootstrap_first_owner_invitation(
+  candidate_email text,
+  candidate_expires_at timestamptz default now() + interval '7 days'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  invitation_id uuid;
+  normalised_email text := lower(trim(candidate_email));
+begin
+  if session_user <> 'postgres' then
+    raise exception 'CMS_BOOTSTRAP_OPERATOR_REQUIRED' using errcode = '42501';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('thrive.cms.owner.bootstrap', 0));
+
+  if exists(select 1 from public.cms_owner_bootstrap)
+    or exists(select 1 from public.user_roles where role = 'owner')
+    or exists(select 1 from public.staff_invitations where role = 'owner') then
+    raise exception 'CMS_BOOTSTRAP_ALREADY_USED' using errcode = '55000';
+  end if;
+
+  if char_length(normalised_email) not between 3 and 320
+    or normalised_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+    or candidate_expires_at <= now()
+    or candidate_expires_at > now() + interval '30 days' then
+    raise exception 'CMS_INVALID_BOOTSTRAP' using errcode = '22023';
+  end if;
+
+  insert into public.staff_invitations(email,role,invited_by,expires_at)
+  values(normalised_email,'owner',null,candidate_expires_at)
+  returning id into invitation_id;
+
+  insert into public.cms_owner_bootstrap(invitation_id,requested_email)
+  values(invitation_id,normalised_email);
+
+  return invitation_id;
+end;
+$$;
+
+revoke all on function public.bootstrap_first_owner_invitation(text,timestamptz) from public;
+revoke all on function public.bootstrap_first_owner_invitation(text,timestamptz) from anon, authenticated, service_role;
 
 create function public.protect_staff_invitation_update()
 returns trigger language plpgsql set search_path = '' as $$
@@ -538,9 +596,19 @@ begin
   where email = lower(trim(new.email)) and consumed_at is null and revoked_at is null and expires_at > now()
   order by created_at desc limit 1 for update;
   if not found then raise exception 'INVITATION_REQUIRED' using errcode = '42501'; end if;
+  if invitation.role = 'owner' and not exists(
+    select 1 from public.cms_owner_bootstrap
+    where invitation_id = invitation.id and completed_at is null
+  ) then raise exception 'CMS_INVALID_OWNER_INVITATION' using errcode = '42501'; end if;
   insert into public.profiles(id,display_name) values(new.id,coalesce(nullif(split_part(new.email,'@',1),''),'Invited user'));
   insert into public.user_roles(user_id,role,granted_by) values(new.id,invitation.role,invitation.invited_by);
   update public.staff_invitations set consumed_at = now(), consumed_by = new.id where id = invitation.id;
+  if invitation.role = 'owner' then
+    update public.cms_owner_bootstrap
+    set completed_at = now(), completed_by = new.id
+    where invitation_id = invitation.id and completed_at is null;
+    if not found then raise exception 'CMS_BOOTSTRAP_COMPLETION_FAILED' using errcode = '55000'; end if;
+  end if;
   insert into public.content_audit_log(actor_id,action,entity_type,entity_id,after_data)
   values(invitation.invited_by,'staff_invitation.consumed','staff_invitation',invitation.id::text,jsonb_build_object('user_id',new.id,'role',invitation.role));
   return new;
