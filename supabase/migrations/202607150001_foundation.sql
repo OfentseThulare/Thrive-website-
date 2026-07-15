@@ -133,7 +133,7 @@ create table public.assets (
   id uuid primary key default gen_random_uuid(),
   storage_path text not null unique check (storage_path !~ '(^|/)\.\.(/|$)'),
   filename text not null check (char_length(filename) between 1 and 240),
-  mime_type text not null check (mime_type like 'image/%' or mime_type = 'application/pdf'),
+  mime_type text not null check (mime_type in ('image/jpeg', 'image/png', 'image/webp', 'image/avif')),
   byte_size bigint not null check (byte_size > 0 and byte_size <= 15728640),
   width integer check (width > 0),
   height integer check (height > 0),
@@ -661,7 +661,7 @@ values (
   'site-assets',
   false,
   15728640,
-  array['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'application/pdf']
+  array['image/jpeg', 'image/png', 'image/webp', 'image/avif']
 )
 on conflict (id) do update set
   public = excluded.public,

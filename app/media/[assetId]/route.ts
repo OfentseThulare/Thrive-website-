@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+const supportedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ assetId: string }> }) {
   const parsedId = z.string().uuid().safeParse((await params).assetId);
   if (!parsedId.success) return new NextResponse("Not found", { status: 404 });
@@ -14,7 +16,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .eq("id", parsedId.data)
     .eq("status", "published")
     .single();
-  if (error || !asset || !asset.mime_type.startsWith("image/")) {
+  if (error || !asset || !supportedImageTypes.has(asset.mime_type)) {
     return new NextResponse("Not found", { status: 404 });
   }
   const { data, error: downloadError } = await supabase.storage.from("site-assets").download(asset.storage_path);

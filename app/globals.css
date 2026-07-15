@@ -1731,6 +1731,20 @@ figure {
   font-size: 1.7rem;
 }
 
+.admin-seed-import-form {
+  display: flex;
+  max-width: 560px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 22px auto 0;
+}
+
+.admin-seed-import-form .admin-feedback {
+  flex: 1;
+  text-align: left;
+}
+
 .admin-activity-list,
 .admin-version-list,
 .admin-navigation-list {

@@ -10,7 +10,7 @@ export function AdminShell({ identity, children, mfaRequired }: { identity: CmsI
     { href: "/admin", label: "Overview", show: true },
     { href: "/admin/pages", label: "Pages", show: hasCmsRole(identity.roles, ["owner", "publisher", "editor", "auditor"]) },
     { href: "/admin/reusable", label: "Reusable content", show: hasCmsRole(identity.roles, ["owner", "publisher", "editor", "auditor"]) },
-    { href: "/admin/assets", label: "Assets", show: hasCmsRole(identity.roles, ["owner", "publisher", "editor", "auditor"]) },
+    { href: "/admin/assets", label: "Images", show: hasCmsRole(identity.roles, ["owner", "publisher", "editor", "auditor"]) },
     { href: "/admin/navigation", label: "Navigation", show: hasCmsRole(identity.roles, ["owner", "publisher", "editor", "auditor"]) },
     { href: "/admin/audit", label: "Audit trail", show: hasCmsRole(identity.roles, ["owner", "publisher", "auditor"]) },
     { href: "/admin/roles", label: "People and roles", show: hasCmsRole(identity.roles, ["owner"]) },

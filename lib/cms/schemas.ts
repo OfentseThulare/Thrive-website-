@@ -136,7 +136,7 @@ export const assetMetadataSchema = z.object({
   restrictions: z.string().trim().max(1000).optional().default(""),
 });
 
-const safeAssetMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/avif", "application/pdf"] as const;
+const safeAssetMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"] as const;
 export const maximumAssetBytes = 15 * 1024 * 1024;
 
 export function validateAssetFile(file: Pick<File, "name" | "type" | "size">) {
