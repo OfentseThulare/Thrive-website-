@@ -87,7 +87,7 @@ create table public.page_versions (
   id uuid primary key default gen_random_uuid(),
   page_id uuid not null references public.pages(id) on delete cascade,
   version_number integer not null check (version_number > 0),
-  snapshot jsonb not null,
+  snapshot jsonb not null check (jsonb_typeof(snapshot) = 'object'),
   change_summary text check (char_length(change_summary) <= 500),
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
@@ -371,6 +371,51 @@ as $$
   );
 $$;
 
+create function public.validate_page_publication()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  published_snapshot jsonb;
+begin
+  if new.status <> 'published' then
+    return new;
+  end if;
+
+  if new.published_version_id is null or new.published_at is null then
+    raise exception 'Published pages require a version and publication timestamp';
+  end if;
+
+  select snapshot into published_snapshot
+  from public.page_versions
+  where id = new.published_version_id and page_id = new.id;
+
+  if published_snapshot is null then
+    raise exception 'Published version must belong to the page';
+  end if;
+
+  if (published_snapshot ->> 'slug') is distinct from new.slug
+    or (published_snapshot ->> 'title') is distinct from new.title
+    or (published_snapshot ->> 'description') is distinct from new.description
+    or (published_snapshot ->> 'status') is distinct from 'published' then
+    raise exception 'Published page metadata must match its immutable version snapshot';
+  end if;
+
+  return new;
+end;
+$$;
+
+create function public.prevent_page_version_mutation()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'Page versions are immutable';
+end;
+$$;
+
 revoke all on function public.has_any_role(public.app_role[]) from public;
 grant execute on function public.has_any_role(public.app_role[]) to anon, authenticated;
 
@@ -382,6 +427,10 @@ create trigger navigation_items_updated_at before update on public.navigation_it
 for each row execute function public.set_updated_at();
 create trigger pages_updated_at before update on public.pages
 for each row execute function public.set_updated_at();
+create trigger pages_validate_publication before insert or update on public.pages
+for each row execute function public.validate_page_publication();
+create trigger page_versions_immutable before update or delete on public.page_versions
+for each row execute function public.prevent_page_version_mutation();
 create trigger sections_updated_at before update on public.sections
 for each row execute function public.set_updated_at();
 create trigger reusable_entries_updated_at before update on public.reusable_entries
@@ -442,32 +491,61 @@ with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]))
 
 create policy navigation_public_read on public.navigation_items for select to anon, authenticated
 using (visible);
-create policy navigation_cms_manage on public.navigation_items for all to authenticated
-using (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]))
-with check (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]));
+create policy navigation_cms_read on public.navigation_items for select to authenticated
+using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
+create policy navigation_editor_insert_hidden on public.navigation_items for insert to authenticated
+with check (not visible and public.has_any_role(array['editor']::public.app_role[]));
+create policy navigation_editor_update_hidden on public.navigation_items for update to authenticated
+using (not visible and public.has_any_role(array['editor']::public.app_role[]))
+with check (not visible and public.has_any_role(array['editor']::public.app_role[]));
+create policy navigation_editor_delete_hidden on public.navigation_items for delete to authenticated
+using (not visible and public.has_any_role(array['editor']::public.app_role[]));
+create policy navigation_publishers_manage on public.navigation_items for all to authenticated
+using (public.has_any_role(array['owner', 'publisher']::public.app_role[]))
+with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]));
 
 create policy pages_public_read on public.pages for select to anon, authenticated
 using (status = 'published');
 create policy pages_cms_read on public.pages for select to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
-create policy pages_cms_write on public.pages for all to authenticated
-using (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]))
-with check (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]));
+create policy pages_editor_insert_draft on public.pages for insert to authenticated
+with check (
+  status = 'draft' and published_version_id is null and published_at is null
+  and public.has_any_role(array['editor']::public.app_role[])
+);
+create policy pages_editor_update_draft on public.pages for update to authenticated
+using (
+  status = 'draft' and published_version_id is null
+  and public.has_any_role(array['editor']::public.app_role[])
+)
+with check (
+  status = 'draft' and published_version_id is null and published_at is null
+  and public.has_any_role(array['editor']::public.app_role[])
+);
+create policy pages_editor_delete_draft on public.pages for delete to authenticated
+using (
+  status = 'draft' and published_version_id is null
+  and public.has_any_role(array['editor']::public.app_role[])
+);
+create policy pages_publishers_manage on public.pages for all to authenticated
+using (public.has_any_role(array['owner', 'publisher']::public.app_role[]))
+with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]));
 
+create policy page_versions_public_read on public.page_versions for select to anon, authenticated
+using (
+  exists (
+    select 1 from public.pages
+    where pages.published_version_id = page_versions.id and pages.status = 'published'
+  )
+);
 create policy page_versions_cms_read on public.page_versions for select to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
 create policy page_versions_publish on public.page_versions for insert to authenticated
 with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]));
 
-create policy sections_public_read on public.sections for select to anon, authenticated
-using (
-  visible and exists (
-    select 1 from public.pages where pages.slug = sections.page_slug and pages.status = 'published'
-  )
-);
 create policy sections_cms_read on public.sections for select to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
-create policy sections_cms_write on public.sections for all to authenticated
+create policy sections_draft_manage on public.sections for all to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]))
 with check (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]));
 
@@ -475,17 +553,31 @@ create policy reusable_public_read on public.reusable_entries for select to anon
 using (status = 'published');
 create policy reusable_cms_read on public.reusable_entries for select to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
-create policy reusable_cms_write on public.reusable_entries for all to authenticated
-using (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]))
-with check (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]));
+create policy reusable_editor_insert_draft on public.reusable_entries for insert to authenticated
+with check (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy reusable_editor_update_draft on public.reusable_entries for update to authenticated
+using (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]))
+with check (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy reusable_editor_delete_draft on public.reusable_entries for delete to authenticated
+using (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy reusable_publishers_manage on public.reusable_entries for all to authenticated
+using (public.has_any_role(array['owner', 'publisher']::public.app_role[]))
+with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]));
 
 create policy assets_public_read on public.assets for select to anon, authenticated
 using (status = 'published');
 create policy assets_cms_read on public.assets for select to authenticated
 using (public.has_any_role(array['owner', 'publisher', 'editor', 'auditor']::public.app_role[]));
-create policy assets_cms_write on public.assets for all to authenticated
-using (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]))
-with check (public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[]));
+create policy assets_editor_insert_draft on public.assets for insert to authenticated
+with check (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy assets_editor_update_draft on public.assets for update to authenticated
+using (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]))
+with check (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy assets_editor_delete_draft on public.assets for delete to authenticated
+using (status = 'draft' and public.has_any_role(array['editor']::public.app_role[]));
+create policy assets_publishers_manage on public.assets for all to authenticated
+using (public.has_any_role(array['owner', 'publisher']::public.app_role[]))
+with check (public.has_any_role(array['owner', 'publisher']::public.app_role[]));
 
 create policy redirects_public_read on public.redirects for select to anon, authenticated
 using (active);
@@ -506,12 +598,24 @@ create policy services_staff_write on public.services for all to authenticated
 using (public.has_any_role(array['owner', 'scheduler']::public.app_role[]))
 with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
 
-create policy availability_rules_staff on public.availability_rules for all to authenticated
-using (public.has_any_role(array['owner', 'scheduler', 'auditor']::public.app_role[]))
+create policy availability_rules_read on public.availability_rules for select to authenticated
+using (public.has_any_role(array['owner', 'scheduler', 'auditor']::public.app_role[]));
+create policy availability_rules_insert on public.availability_rules for insert to authenticated
 with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
-create policy availability_exceptions_staff on public.availability_exceptions for all to authenticated
-using (public.has_any_role(array['owner', 'scheduler', 'auditor']::public.app_role[]))
+create policy availability_rules_update on public.availability_rules for update to authenticated
+using (public.has_any_role(array['owner', 'scheduler']::public.app_role[]))
 with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+create policy availability_rules_delete on public.availability_rules for delete to authenticated
+using (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+create policy availability_exceptions_read on public.availability_exceptions for select to authenticated
+using (public.has_any_role(array['owner', 'scheduler', 'auditor']::public.app_role[]));
+create policy availability_exceptions_insert on public.availability_exceptions for insert to authenticated
+with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+create policy availability_exceptions_update on public.availability_exceptions for update to authenticated
+using (public.has_any_role(array['owner', 'scheduler']::public.app_role[]))
+with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+create policy availability_exceptions_delete on public.availability_exceptions for delete to authenticated
+using (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
 
 create policy consent_versions_public_read on public.consent_versions for select to anon, authenticated
 using (active and effective_at <= now() and (retired_at is null or retired_at > now()));
@@ -583,16 +687,43 @@ with check (
 create policy site_assets_editor_update on storage.objects for update to authenticated
 using (
   bucket_id = 'site-assets'
-  and public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[])
+  and (
+    public.has_any_role(array['owner', 'publisher']::public.app_role[])
+    or (
+      public.has_any_role(array['editor']::public.app_role[])
+      and exists (
+        select 1 from public.assets
+        where assets.storage_path = storage.objects.name and assets.status = 'draft'
+      )
+    )
+  )
 )
 with check (
   bucket_id = 'site-assets'
-  and public.has_any_role(array['owner', 'publisher', 'editor']::public.app_role[])
+  and (
+    public.has_any_role(array['owner', 'publisher']::public.app_role[])
+    or (
+      public.has_any_role(array['editor']::public.app_role[])
+      and exists (
+        select 1 from public.assets
+        where assets.storage_path = storage.objects.name and assets.status = 'draft'
+      )
+    )
+  )
 );
 create policy site_assets_editor_delete on storage.objects for delete to authenticated
 using (
   bucket_id = 'site-assets'
-  and public.has_any_role(array['owner', 'publisher']::public.app_role[])
+  and (
+    public.has_any_role(array['owner', 'publisher']::public.app_role[])
+    or (
+      public.has_any_role(array['editor']::public.app_role[])
+      and exists (
+        select 1 from public.assets
+        where assets.storage_path = storage.objects.name and assets.status = 'draft'
+      )
+    )
+  )
 );
 
 commit;

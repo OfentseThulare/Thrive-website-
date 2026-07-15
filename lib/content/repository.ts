@@ -1,19 +1,16 @@
 import "server-only";
 
-import { pageContentSchema, type ContentBlock, type PageContent } from "./contracts";
+import { pageContentSchema, type PageContent } from "./contracts";
 import { seedPages } from "./seed";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type PageRow = {
   slug: string;
-  title: string;
-  description: string;
-  status: "draft" | "published";
+  published_version_id: string;
 };
 
-type SectionRow = {
-  block_type: ContentBlock["blockType"];
-  content: Record<string, unknown>;
+type VersionRow = {
+  snapshot: unknown;
 };
 
 export async function getPublishedPage(slug: string): Promise<PageContent | null> {
@@ -25,7 +22,7 @@ export async function getPublishedPage(slug: string): Promise<PageContent | null
 
   const { data: page, error: pageError } = await supabase
     .from("pages")
-    .select("slug,title,description,status")
+    .select("slug,published_version_id")
     .eq("slug", slug)
     .eq("status", "published")
     .single<PageRow>();
@@ -35,23 +32,21 @@ export async function getPublishedPage(slug: string): Promise<PageContent | null
     throw new Error(`Published page query failed: ${pageError.code}`);
   }
 
-  const { data: sections, error: sectionError } = await supabase
-    .from("sections")
-    .select("block_type,content")
-    .eq("page_slug", slug)
-    .eq("visible", true)
-    .order("position")
-    .returns<SectionRow[]>();
+  const { data: version, error: versionError } = await supabase
+    .from("page_versions")
+    .select("snapshot")
+    .eq("id", page.published_version_id)
+    .single<VersionRow>();
 
-  if (sectionError) {
-    throw new Error(`Published section query failed: ${sectionError.code}`);
+  if (versionError) {
+    throw new Error(`Published page version query failed: ${versionError.code}`);
   }
 
-  return pageContentSchema.parse({
-    ...page,
-    sections: (sections ?? []).map((section) => ({
-      ...section.content,
-      blockType: section.block_type,
-    })),
-  });
+  const publishedPage = pageContentSchema.parse(version.snapshot);
+
+  if (publishedPage.slug !== page.slug || publishedPage.status !== "published") {
+    throw new Error("Published page snapshot does not match its route or publication state.");
+  }
+
+  return publishedPage;
 }

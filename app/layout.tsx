@@ -1,26 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Alegreya_Sans, Cormorant_Garamond } from "next/font/google";
 
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
-
-const sans = Alegreya_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
-
-const serif = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  style: ["normal", "italic"],
-  variable: "--font-serif",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   metadataBase: getSiteUrl(),
@@ -48,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-ZA" className={`${sans.variable} ${serif.variable}`}>
+    <html lang="en-ZA">
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content

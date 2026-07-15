@@ -1,8 +1,44 @@
 import { z } from "zod";
 
+function isSafeHref(value: string) {
+  if (/[\u0000-\u001f\u007f]/.test(value) || value.includes("\\")) return false;
+
+  if (value.startsWith("/")) {
+    return !value.startsWith("//");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    return Boolean(url.hostname) && !url.username && !url.password;
+  }
+
+  if (url.protocol === "mailto:") {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(url.pathname);
+  }
+
+  if (url.protocol === "tel:") {
+    return /^\+?[0-9 ()-]{7,25}$/.test(url.pathname);
+  }
+
+  return false;
+}
+
+export const safeHrefSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(300)
+  .refine(isSafeHref, "Link must use a safe internal path or an approved external scheme");
+
 const linkSchema = z.object({
   label: z.string().trim().min(1).max(80),
-  href: z.string().trim().min(1).max(300),
+  href: safeHrefSchema,
 });
 
 const imageSchema = z.object({

@@ -55,6 +55,45 @@ begin
   ) then
     raise exception 'Storage read policy is missing';
   end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'page_versions'
+      and policyname = 'page_versions_public_read'
+      and cmd = 'SELECT'
+      and 'anon'::name = any(roles)
+  ) then
+    raise exception 'Published page version policy is missing';
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'sections'
+      and 'anon'::name = any(roles)
+  ) then
+    raise exception 'Live section rows must not be exposed to anonymous readers';
+  end if;
+
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename in ('availability_rules', 'availability_exceptions')
+      and cmd in ('ALL', 'INSERT', 'UPDATE', 'DELETE')
+      and coalesce(qual, '') like '%auditor%'
+  ) then
+    raise exception 'Auditor role has an availability mutation policy';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.page_versions'::regclass
+      and tgname = 'page_versions_immutable'
+      and not tgisinternal
+  ) then
+    raise exception 'Page version immutability trigger is missing';
+  end if;
 end;
 $$;
 

@@ -65,6 +65,49 @@ test("site asset storage has explicit read and staff mutation policies", async (
   assert.match(migration, /site_assets_editor_delete on storage\.objects for delete/);
 });
 
+test("public content is served only from immutable published page versions", async () => {
+  const migration = await readFile(migrationUrl, "utf8");
+  const repository = await readFile(
+    new URL("../lib/content/repository.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(migration, /page_versions_public_read on public\.page_versions for select/);
+  assert.match(migration, /pages\.published_version_id = page_versions\.id/);
+  assert.match(migration, /page_versions_immutable before update or delete/);
+  assert.match(migration, /pages_validate_publication before insert or update/);
+  assert.match(migration, /snapshot ->> 'status'\) is distinct from 'published'/);
+  assert.doesNotMatch(migration, /sections_public_read/);
+  assert.match(repository, /\.from\("page_versions"\)/);
+  assert.doesNotMatch(repository, /\.from\("sections"\)/);
+});
+
+test("editors cannot transition draft content into public state", async () => {
+  const migration = await readFile(migrationUrl, "utf8");
+
+  assert.doesNotMatch(migration, /pages_cms_write/);
+  assert.doesNotMatch(migration, /reusable_cms_write/);
+  assert.doesNotMatch(migration, /assets_cms_write/);
+  assert.match(migration, /pages_editor_update_draft[\s\S]*?status = 'draft'/);
+  assert.match(migration, /reusable_editor_update_draft[\s\S]*?status = 'draft'/);
+  assert.match(migration, /assets_editor_update_draft[\s\S]*?status = 'draft'/);
+  assert.match(migration, /navigation_editor_update_hidden[\s\S]*?not visible/);
+});
+
+test("auditors have no mutation policy", async () => {
+  const migration = await readFile(migrationUrl, "utf8");
+  const allPolicies = migration.match(/create policy [\s\S]*?;/g) ?? [];
+
+  for (const policy of allPolicies) {
+    if (/for (all|insert|update|delete)/.test(policy)) {
+      assert.doesNotMatch(policy, /'auditor'/);
+    }
+  }
+
+  assert.match(migration, /availability_rules_read[\s\S]*?'auditor'/);
+  assert.match(migration, /availability_exceptions_read[\s\S]*?'auditor'/);
+});
+
 test("database execution test checks catalog RLS, policies and overlap protection", async () => {
   const sql = await readFile(new URL("../supabase/tests/001_foundation.sql", import.meta.url), "utf8");
 
