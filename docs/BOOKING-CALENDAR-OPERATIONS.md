@@ -18,9 +18,13 @@ The public form accepts full name, email and optional telephone only. Do not add
 
 Availability, status and contact pages use `Cache-Control: no-store`. Hold, status and release RPCs are callable only through the server-only booking client, so direct Supabase callers cannot bypass the Google FreeBusy check. A database-backed limiter stores only a secret-peppered SHA-256 network fingerprint. Platform firewall limits remain recommended as an additional layer before opening production traffic.
 
+Each hold lasts exactly 15 minutes. The browser retains one random UUID idempotency key while a selected slot is being submitted. If the response is lost, a rate-limited retry with that same high-entropy key atomically rotates a new access token for the existing live hold. The private recovery RPC returns no contact information and is executable only by the server role.
+
 ## Time and concurrency
 
 All stored timestamps are UTC. PostgreSQL generates slots using `Africa/Johannesburg`; the interface labels every public and admin time as Johannesburg time or SAST. A database exclusion constraint covers the current single practitioner across every service. Service buffer time is part of the protected range. An advisory transaction lock, stale hold expiry and exclusion handling make hold creation safe under concurrency.
+
+Scheduler accounts may manage services, weekly rules and exceptions at AAL1. An account holding the owner role must be at AAL2 for every schedule mutation, including direct RLS-protected writes and state transition RPCs. Adding a scheduler role to an owner does not bypass this requirement.
 
 ## Calendar recovery
 

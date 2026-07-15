@@ -20,10 +20,37 @@ test("booking writes are narrow RPCs with hashed access and overlap locking", as
 
 test("slot and hold RPCs enforce horizon, consent, exact slots, expiry and ZAR service data", async () => {
   const sql = await readFile(migrationUrl, "utf8");
-  for (const requirement of ["Africa/Johannesburg", "local_today + 90", "BOOKING_CONSENT_UNAVAILABLE", "list_booking_slots", "expire_stale_booking_holds", "currency = 'ZAR'", "exclusion_violation", "check_booking_rate_limit", "resume_booking_hold"]) assert.match(sql, new RegExp(requirement.replace(/[+]/g, "\\+")));
+  for (const requirement of ["Africa/Johannesburg", "local_today + 90", "BOOKING_CONSENT_UNAVAILABLE", "list_booking_slots", "expire_stale_booking_holds", "currency = 'ZAR'", "exclusion_violation", "check_booking_rate_limit", "recover_booking_hold"]) assert.match(sql, new RegExp(requirement.replace(/[+]/g, "\\+")));
+  assert.match(sql, /hold_expires_at[\s\S]*now\(\) \+ interval '15 minutes'/);
+  assert.doesNotMatch(sql, /booking\.hold_duration|hold_minutes/);
   assert.match(sql, /p_client_name !~ '\\S'/);
   assert.match(sql, /p_client_email !~\* '[^']*\\\.[^']*'/);
   assert.doesNotMatch(sql, /p_client_name !~ '\\\\S'/);
+});
+
+test("lost hold responses rotate access atomically without exposing recovery publicly", async () => {
+  const [sql, holdRoute] = await Promise.all([
+    readFile(migrationUrl, "utf8"),
+    readFile(new URL("../app/api/booking/hold/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(sql, /update public\.bookings set access_token_hash = p_new_access_token_hash/);
+  assert.match(sql, /idempotency_key = p_idempotency_key[\s\S]*hold_expires_at > now\(\)/);
+  assert.match(sql, /grant execute on function public\.recover_booking_hold\(uuid, text\) to service_role/);
+  assert.doesNotMatch(sql, /grant execute on function public\.recover_booking_hold[^;]*to (?:anon|authenticated)/);
+  assert.match(holdRoute, /recover_booking_hold/);
+  assert.match(holdRoute, /setBookingAccessCookie\(secrets\.accessToken\)/);
+  assert.match(holdRoute, /if \(recovered\)[\s\S]*return privateJson\(\{ ok: true, next: "\/book\/status" \}/);
+});
+
+test("schedule mutations require owner MFA at the database boundary", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(sql, /create function public\.can_mutate_schedule\(\)/);
+  assert.match(sql, /not public\.has_any_role\(array\['owner'\]/);
+  assert.match(sql, /or public\.current_session_is_aal2\(\)/);
+  for (const policy of ["services_schedule_manage", "availability_rules_schedule_manage", "availability_exceptions_schedule_manage", "consent_versions_scheduler_manage", "calendar_sync_schedule_append"]) {
+    assert.match(sql, new RegExp(`create policy ${policy}[\\s\\S]*?public\\.can_mutate_schedule\\(\\)`));
+  }
+  assert.match(sql, /if not public\.can_mutate_schedule\(\) then raise exception 'BOOKING_NOT_AUTHORISED'/);
 });
 
 test("public booking boundary contains no health information fields or false confirmation", async () => {
@@ -52,6 +79,24 @@ test("scheduler roles remain separate from content roles", async () => {
   assert.match(actions, /requireCmsRole\(identity\.roles, \["owner", "scheduler"\]\)/);
   assert.doesNotMatch(actions, /"editor"|"publisher"/);
   assert.match(shell, /\["owner", "scheduler", "finance", "auditor"\]/);
+});
+
+test("scheduler interfaces support service updates and full rule and exception management", async () => {
+  const [actions, servicesPage, availabilityPage, exceptionsPage] = await Promise.all([
+    readFile(new URL("../app/admin/schedule-actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/(protected)/schedule/services/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/(protected)/schedule/availability/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/(protected)/schedule/exceptions/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(actions, /saveServiceAction[\s\S]*\.update\(record\)\.eq\("id", input\.id\)/);
+  assert.match(actions, /saveAvailabilityRuleAction/);
+  assert.match(actions, /deleteAvailabilityRuleAction/);
+  assert.match(actions, /saveAvailabilityExceptionAction/);
+  assert.match(actions, /deleteAvailabilityExceptionAction/);
+  assert.match(servicesPage, /Save changes/);
+  assert.match(availabilityPage, /Rule is active/);
+  assert.match(availabilityPage, /Remove rule/);
+  assert.match(exceptionsPage, /Remove exception/);
 });
 
 test("privileged booking credentials remain isolated to server-only modules", async () => {

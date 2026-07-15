@@ -1,9 +1,23 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(20);
+select plan(33);
 
 select set_config('app.cms_fixture_bypass', 'on', true);
+insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+values
+('84000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000000','authenticated','authenticated','schedule-owner@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now()),
+('84000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000000','authenticated','authenticated','schedule-operator@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now()),
+('84000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000000','authenticated','authenticated','schedule-multi@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now());
+insert into public.profiles(id,display_name) values
+('84000000-0000-0000-0000-000000000001','Schedule Owner'),
+('84000000-0000-0000-0000-000000000002','Schedule Operator'),
+('84000000-0000-0000-0000-000000000003','Schedule Multi-role');
+insert into public.user_roles(user_id,role) values
+('84000000-0000-0000-0000-000000000001','owner'),
+('84000000-0000-0000-0000-000000000002','scheduler'),
+('84000000-0000-0000-0000-000000000003','owner'),
+('84000000-0000-0000-0000-000000000003','scheduler');
 insert into public.services(id,slug,name,description,duration_minutes,buffer_minutes,price_cents,currency,active,position) values
 ('81000000-0000-0000-0000-000000000001','health-coaching-test','Health coaching test','Test-only service description.',60,15,125000,'ZAR',true,1),
 ('81000000-0000-0000-0000-000000000002','counselling-test','Counselling test','Second test-only service.',60,0,125000,'ZAR',true,2);
@@ -45,6 +59,7 @@ select lives_ok(
   'anonymous booking writes are permitted only through the hold RPC'
 );
 select is((select count(*)::integer from public.get_booking_status(repeat('a',64))), 1, 'the opaque token hash retrieves one status');
+select ok((select hold_expires_at between now() + interval '14 minutes 59 seconds' and now() + interval '15 minutes' from public.get_booking_status(repeat('a',64))), 'the authoritative hold duration is exactly fifteen minutes');
 select lives_ok(
   $$select * from public.create_booking_hold(
     '81000000-0000-0000-0000-000000000001',
@@ -55,6 +70,9 @@ select lives_ok(
   )$$,
   'repeating the same idempotency key and token is idempotent'
 );
+select is((select count(*)::integer from public.recover_booking_hold('83000000-0000-0000-0000-000000000001', repeat('d',64))), 1, 'a lost response can recover the live hold with the same idempotency key');
+select is((select count(*)::integer from public.get_booking_status(repeat('a',64))), 0, 'recovery invalidates the previous access token');
+select is((select count(*)::integer from public.get_booking_status(repeat('d',64))), 1, 'recovery grants the rotated access token access to the same hold');
 select throws_ok(
   $$select * from public.create_booking_hold(
     '81000000-0000-0000-0000-000000000002',
@@ -102,6 +120,40 @@ select ok(not has_function_privilege('anon', 'public.create_booking_hold(uuid,ti
 select ok(not has_function_privilege('anon', 'public.expire_stale_booking_holds()', 'execute'), 'anonymous users cannot invoke the internal expiry function');
 select matches(pg_get_functiondef('public.list_booking_slots(uuid,date,date)'::regprocedure), 'Africa/Johannesburg', 'slot SQL uses named time-zone conversion');
 select ok(exists(select 1 from pg_constraint where conrelid = 'public.bookings'::regclass and conname = 'bookings_active_time_exclusion' and contype = 'x'), 'the active cross-service exclusion constraint exists');
+
+select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal1"}', true);
+set local role authenticated;
+select ok(not public.can_mutate_schedule(), 'an owner at AAL1 cannot mutate the schedule');
+select is((with changed as (update public.services set name = 'Forbidden owner update' where id = '81000000-0000-0000-0000-000000000001' returning 1) select count(*)::integer from changed), 0, 'schedule RLS blocks an owner at AAL1');
+select throws_ok(
+  $$select public.transition_booking_state('89000000-0000-0000-0000-000000000001','CANCELLED')$$,
+  'P0001', 'BOOKING_NOT_AUTHORISED', 'the transition RPC blocks an owner at AAL1'
+);
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal2"}', true);
+set local role authenticated;
+select ok(public.can_mutate_schedule(), 'an owner at AAL2 can mutate the schedule');
+select lives_ok(
+  $$select public.transition_booking_state('89000000-0000-0000-0000-000000000001','CANCELLED')$$,
+  'the transition RPC admits an owner at AAL2'
+);
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000002","role":"authenticated","aal":"aal1"}', true);
+set local role authenticated;
+select ok(public.can_mutate_schedule(), 'a scheduler at AAL1 can mutate the schedule');
+select is((with changed as (update public.services set name = 'Scheduler managed service' where id = '81000000-0000-0000-0000-000000000001' returning 1) select count(*)::integer from changed), 1, 'schedule RLS admits a scheduler at AAL1');
+select lives_ok(
+  $$select public.transition_booking_state('89000000-0000-0000-0000-000000000001','CANCELLED')$$,
+  'the transition RPC admits a scheduler at AAL1'
+);
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000003","role":"authenticated","aal":"aal1"}', true);
+set local role authenticated;
+select ok(not public.can_mutate_schedule(), 'an owner cannot bypass MFA through an additional scheduler role');
+reset role;
 
 select * from finish();
 rollback;

@@ -22,6 +22,18 @@ alter table public.booking_rate_limits force row level security;
 create policy booking_rate_limits_operator_read on public.booking_rate_limits for select to authenticated
 using (public.has_any_role(array['owner', 'auditor']::public.app_role[]));
 
+create function public.can_mutate_schedule() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select (select auth.uid()) is not null
+    and public.has_any_role(array['owner', 'scheduler']::public.app_role[])
+    and (
+      not public.has_any_role(array['owner']::public.app_role[])
+      or public.current_session_is_aal2()
+    );
+$$;
+revoke all on function public.can_mutate_schedule() from public;
+grant execute on function public.can_mutate_schedule() to authenticated;
+
 create function public.check_booking_rate_limit(p_scope text, p_fingerprint_hash text) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare window_size interval; declare maximum_requests integer; declare current_count integer;
@@ -132,7 +144,7 @@ create function public.create_booking_hold(
 ) returns table(public_reference text, hold_expires_at timestamptz)
 language plpgsql security definer set search_path = '' as $$
 declare service_record record; declare consent_id uuid; declare new_booking_id uuid; declare existing_record record;
-declare hold_minutes integer := 15; declare local_date date;
+declare local_date date;
 begin
   if p_client_name !~ '\S' or char_length(trim(p_client_name)) not between 2 and 160 or p_client_email !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' or char_length(p_client_email) > 320
     or (coalesce(p_client_telephone, '') <> '' and (char_length(p_client_telephone) > 40 or p_client_telephone !~ '^[+()0-9 .]*$'))
@@ -149,11 +161,9 @@ begin
   local_date := (p_starts_at at time zone 'Africa/Johannesburg')::date;
   if not exists (select 1 from public.list_booking_slots(p_service_id, local_date, local_date) s where s.starts_at = p_starts_at and s.ends_at = p_starts_at + make_interval(mins => service_record.duration_minutes))
   then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end if;
-  select coalesce((value ->> 'minutes')::integer, 15) into hold_minutes from public.site_settings where key = 'booking.hold_duration';
-  hold_minutes := greatest(5, least(coalesce(hold_minutes, 15), 30));
   begin
     insert into public.bookings(public_reference, service_id, starts_at, ends_at, blocked_until, state, hold_expires_at, client_name, client_email, client_telephone, idempotency_key, access_token_hash)
-    values (p_public_reference, p_service_id, p_starts_at, p_starts_at + make_interval(mins => service_record.duration_minutes), p_starts_at + make_interval(mins => service_record.duration_minutes + service_record.buffer_minutes), 'HELD', now() + make_interval(mins => hold_minutes), trim(p_client_name), lower(trim(p_client_email)), nullif(trim(p_client_telephone), ''), p_idempotency_key, p_access_token_hash)
+    values (p_public_reference, p_service_id, p_starts_at, p_starts_at + make_interval(mins => service_record.duration_minutes), p_starts_at + make_interval(mins => service_record.duration_minutes + service_record.buffer_minutes), 'HELD', now() + interval '15 minutes', trim(p_client_name), lower(trim(p_client_email)), nullif(trim(p_client_telephone), ''), p_idempotency_key, p_access_token_hash)
     returning id, bookings.hold_expires_at into new_booking_id, hold_expires_at;
   exception when exclusion_violation or unique_violation then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end;
   insert into public.booking_consents values (new_booking_id, consent_id, now());
@@ -163,19 +173,26 @@ end; $$;
 revoke all on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) to service_role;
 
-create function public.resume_booking_hold(p_access_token_hash text, p_idempotency_key uuid) returns boolean
+create function public.recover_booking_hold(p_idempotency_key uuid, p_new_access_token_hash text)
+returns table(public_reference text, hold_expires_at timestamptz)
 language plpgsql security definer set search_path = '' as $$
 begin
   perform public.expire_stale_booking_holds();
-  if p_access_token_hash !~ '^[a-f0-9]{64}$' then return false; end if;
-  return exists (
-    select 1 from public.bookings where access_token_hash = p_access_token_hash
-      and idempotency_key = p_idempotency_key
-      and state in ('HELD', 'PAYMENT_PENDING') and hold_expires_at > now()
-  );
+  if p_new_access_token_hash !~ '^[a-f0-9]{64}$' then return; end if;
+  return query
+  with recovered as (
+    update public.bookings set access_token_hash = p_new_access_token_hash, updated_at = now()
+    where idempotency_key = p_idempotency_key
+      and state in ('HELD', 'PAYMENT_PENDING') and bookings.hold_expires_at > now()
+    returning id, bookings.public_reference, bookings.hold_expires_at
+  ), access_event as (
+    insert into public.booking_events(booking_id, event_type, metadata)
+    select id, 'hold.access_rotated', '{}'::jsonb from recovered
+  )
+  select recovered.public_reference, recovered.hold_expires_at from recovered;
 end; $$;
-revoke all on function public.resume_booking_hold(text, uuid) from public, anon, authenticated;
-grant execute on function public.resume_booking_hold(text, uuid) to service_role;
+revoke all on function public.recover_booking_hold(uuid, text) from public, anon, authenticated;
+grant execute on function public.recover_booking_hold(uuid, text) to service_role;
 
 create function public.get_booking_status(p_access_token_hash text)
 returns table(public_reference text, service_name text, starts_at timestamptz, ends_at timestamptz, state public.booking_state, hold_expires_at timestamptz, price_cents integer, currency char(3))
@@ -200,7 +217,7 @@ revoke all on function public.release_booking_hold(text) from public, anon, auth
 create function public.transition_booking_state(p_booking_id uuid, p_to_state public.booking_state) returns boolean language plpgsql security definer set search_path = '' as $$
 declare old_state public.booking_state;
 begin
-  if not public.has_any_role(array['owner', 'scheduler']::public.app_role[]) then raise exception 'BOOKING_NOT_AUTHORISED'; end if;
+  if not public.can_mutate_schedule() then raise exception 'BOOKING_NOT_AUTHORISED'; end if;
   select state into old_state from public.bookings where id = p_booking_id for update; if old_state is null then return false; end if;
   update public.bookings set state = p_to_state where id = p_booking_id;
   insert into public.booking_events(booking_id, event_type, from_state, to_state, metadata, actor_id) values (p_booking_id, 'state.changed', old_state, p_to_state, '{}'::jsonb, auth.uid()); return true;
@@ -208,7 +225,23 @@ end; $$;
 revoke all on function public.transition_booking_state(uuid, public.booking_state) from public; grant execute on function public.transition_booking_state(uuid, public.booking_state) to authenticated;
 
 drop policy if exists consent_versions_admin_manage on public.consent_versions;
-create policy consent_versions_scheduler_manage on public.consent_versions for all to authenticated using (public.has_any_role(array['owner', 'scheduler']::public.app_role[])) with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+create policy consent_versions_scheduler_manage on public.consent_versions for all to authenticated using (public.can_mutate_schedule()) with check (public.can_mutate_schedule());
+
+drop policy if exists services_staff_write on public.services;
+create policy services_schedule_manage on public.services for all to authenticated using (public.can_mutate_schedule()) with check (public.can_mutate_schedule());
+
+drop policy if exists availability_rules_insert on public.availability_rules;
+drop policy if exists availability_rules_update on public.availability_rules;
+drop policy if exists availability_rules_delete on public.availability_rules;
+create policy availability_rules_schedule_manage on public.availability_rules for all to authenticated using (public.can_mutate_schedule()) with check (public.can_mutate_schedule());
+
+drop policy if exists availability_exceptions_insert on public.availability_exceptions;
+drop policy if exists availability_exceptions_update on public.availability_exceptions;
+drop policy if exists availability_exceptions_delete on public.availability_exceptions;
+create policy availability_exceptions_schedule_manage on public.availability_exceptions for all to authenticated using (public.can_mutate_schedule()) with check (public.can_mutate_schedule());
+
+drop policy if exists calendar_sync_staff_append on public.calendar_sync_events;
+create policy calendar_sync_schedule_append on public.calendar_sync_events for insert to authenticated with check (public.can_mutate_schedule());
 
 drop policy if exists bookings_scheduler_write on public.bookings;
 drop policy if exists booking_events_staff_append on public.booking_events;

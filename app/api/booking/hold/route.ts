@@ -1,7 +1,7 @@
 import { createBookingCalendarAdapter } from "@/lib/booking/calendar-factory";
 import { checkBookingRateLimit } from "@/lib/booking/rate-limit";
 import { holdRequestSchema } from "@/lib/booking/schemas";
-import { createBookingSecrets, getBookingTokenHash, privateJson, setBookingAccessCookie } from "@/lib/booking/server";
+import { createBookingSecrets, privateJson, setBookingAccessCookie } from "@/lib/booking/server";
 import { intervalsOverlap } from "@/lib/booking/time";
 import { createBookingAdminClient } from "@/lib/supabase/booking-admin";
 
@@ -21,14 +21,15 @@ export async function POST(request: Request) {
   try { payload = await request.json(); } catch { return privateJson({ message: "The booking request was not valid." }, { status: 400 }); }
   const parsed = holdRequestSchema.safeParse(payload);
   if (!parsed.success) return privateJson({ message: "Check the highlighted booking details and try again." }, { status: 400 });
-  const existingTokenHash = await getBookingTokenHash();
-  if (existingTokenHash) {
-    const { data: resumed, error: resumeError } = await supabase.rpc("resume_booking_hold", {
-      p_access_token_hash: existingTokenHash,
-      p_idempotency_key: parsed.data.idempotencyKey,
-    });
-    if (resumeError) return privateJson({ message: "The booking request could not be verified safely." }, { status: 503 });
-    if (resumed) return privateJson({ ok: true, next: "/book/status" }, { status: 200 });
+  const secrets = createBookingSecrets();
+  const { data: recovered, error: recoveryError } = await supabase.rpc("recover_booking_hold", {
+    p_idempotency_key: parsed.data.idempotencyKey,
+    p_new_access_token_hash: secrets.accessTokenHash,
+  }).maybeSingle();
+  if (recoveryError) return privateJson({ message: "The booking request could not be verified safely." }, { status: 503 });
+  if (recovered) {
+    await setBookingAccessCookie(secrets.accessToken);
+    return privateJson({ ok: true, next: "/book/status" }, { status: 200 });
   }
   let calendar;
   try { calendar = createBookingCalendarAdapter(); } catch { return privateJson({ message: "Calendar configuration needs attention." }, { status: 503 }); }
@@ -46,7 +47,6 @@ export async function POST(request: Request) {
   } catch {
     return privateJson({ message: "Calendar availability cannot be verified right now. No time has been held." }, { status: 503 });
   }
-  const secrets = createBookingSecrets();
   const { data, error } = await supabase.rpc("create_booking_hold", {
     p_service_id: parsed.data.serviceId,
     p_starts_at: parsed.data.startsAt,

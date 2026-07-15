@@ -34,21 +34,26 @@ export const serviceInputSchema = z.object({
 });
 
 export const availabilityRuleInputSchema = z.object({
+  id: uuidSchema.optional(),
   serviceId: z.union([uuidSchema, z.literal("")]).transform((value) => value || null),
   weekday: z.coerce.number().int().min(0).max(6),
   startsAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   endsAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   effectiveFrom: localDateSchema,
   effectiveUntil: z.union([localDateSchema, z.literal("")]).transform((value) => value || null),
+  active: z.enum(["on"]).optional().transform(Boolean),
 });
 
 export const availabilityExceptionInputSchema = z.object({
+  id: uuidSchema.optional(),
   serviceId: z.union([uuidSchema, z.literal("")]).transform((value) => value || null),
   startsAt: z.string().datetime({ local: true }),
   endsAt: z.string().datetime({ local: true }),
   available: z.enum(["on"]).optional().transform(Boolean),
   reason: z.string().trim().max(240),
 });
+
+export const scheduleRecordIdSchema = z.object({ id: uuidSchema }).strict();
 
 export const consentInputSchema = z.object({
   version: z.string().trim().min(1).max(30),

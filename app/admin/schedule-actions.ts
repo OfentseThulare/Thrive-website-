@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { getCmsIdentity } from "@/lib/cms/auth";
 import { CmsMfaRequiredError, requireCmsRole } from "@/lib/cms/permissions";
-import { availabilityExceptionInputSchema, availabilityRuleInputSchema, bookingTransitionSchema, consentInputSchema, serviceInputSchema } from "@/lib/booking/schemas";
+import { availabilityExceptionInputSchema, availabilityRuleInputSchema, bookingTransitionSchema, consentInputSchema, scheduleRecordIdSchema, serviceInputSchema } from "@/lib/booking/schemas";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function values(formData: FormData) { return Object.fromEntries(formData.entries()); }
@@ -25,29 +25,52 @@ export async function saveServiceAction(formData: FormData) {
   const input = serviceInputSchema.parse(values(formData));
   const { supabase } = await schedulerClient();
   const record = { slug: input.slug, name: input.name, description: input.description, duration_minutes: input.durationMinutes, buffer_minutes: input.bufferMinutes, price_cents: Math.round(input.priceRands * 100), currency: "ZAR", active: input.active, position: input.position };
-  const query = input.id ? supabase.from("services").update(record).eq("id", input.id) : supabase.from("services").insert(record);
-  const { error } = await query;
-  if (error) throw new Error("SERVICE_SAVE_FAILED");
+  const result = input.id
+    ? await supabase.from("services").update(record).eq("id", input.id).select("id").maybeSingle()
+    : await supabase.from("services").insert(record).select("id").maybeSingle();
+  if (result.error || !result.data) throw new Error("SERVICE_SAVE_FAILED");
   revalidatePath("/admin/schedule/services"); revalidatePath("/book");
 }
 
-export async function addAvailabilityRuleAction(formData: FormData) {
+export async function saveAvailabilityRuleAction(formData: FormData) {
   const input = availabilityRuleInputSchema.parse(values(formData));
   if (input.endsAt <= input.startsAt) throw new Error("AVAILABILITY_TIME_INVALID");
   const { supabase } = await schedulerClient();
-  const { error } = await supabase.from("availability_rules").insert({ service_id: input.serviceId, weekday: input.weekday, starts_at: input.startsAt, ends_at: input.endsAt, timezone: "Africa/Johannesburg", effective_from: input.effectiveFrom, effective_until: input.effectiveUntil, active: true });
-  if (error) throw new Error("AVAILABILITY_SAVE_FAILED");
+  const record = { service_id: input.serviceId, weekday: input.weekday, starts_at: input.startsAt, ends_at: input.endsAt, timezone: "Africa/Johannesburg", effective_from: input.effectiveFrom, effective_until: input.effectiveUntil, active: input.active };
+  const result = input.id
+    ? await supabase.from("availability_rules").update(record).eq("id", input.id).select("id").maybeSingle()
+    : await supabase.from("availability_rules").insert(record).select("id").maybeSingle();
+  if (result.error || !result.data) throw new Error("AVAILABILITY_SAVE_FAILED");
   revalidatePath("/admin/schedule/availability");
 }
 
-export async function addAvailabilityExceptionAction(formData: FormData) {
+export async function deleteAvailabilityRuleAction(formData: FormData) {
+  const input = scheduleRecordIdSchema.parse(values(formData));
+  const { supabase } = await schedulerClient();
+  const { data, error } = await supabase.from("availability_rules").delete().eq("id", input.id).select("id").maybeSingle();
+  if (error || !data) throw new Error("AVAILABILITY_DELETE_FAILED");
+  revalidatePath("/admin/schedule/availability");
+}
+
+export async function saveAvailabilityExceptionAction(formData: FormData) {
   const input = availabilityExceptionInputSchema.parse(values(formData));
   const startsAt = new Date(`${input.startsAt}:00+02:00`);
   const endsAt = new Date(`${input.endsAt}:00+02:00`);
   if (!(endsAt > startsAt)) throw new Error("EXCEPTION_TIME_INVALID");
   const { supabase } = await schedulerClient();
-  const { error } = await supabase.from("availability_exceptions").insert({ service_id: input.serviceId, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), available: input.available, reason: input.reason || null });
-  if (error) throw new Error("EXCEPTION_SAVE_FAILED");
+  const record = { service_id: input.serviceId, starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), available: input.available, reason: input.reason || null };
+  const result = input.id
+    ? await supabase.from("availability_exceptions").update(record).eq("id", input.id).select("id").maybeSingle()
+    : await supabase.from("availability_exceptions").insert(record).select("id").maybeSingle();
+  if (result.error || !result.data) throw new Error("EXCEPTION_SAVE_FAILED");
+  revalidatePath("/admin/schedule/exceptions");
+}
+
+export async function deleteAvailabilityExceptionAction(formData: FormData) {
+  const input = scheduleRecordIdSchema.parse(values(formData));
+  const { supabase } = await schedulerClient();
+  const { data, error } = await supabase.from("availability_exceptions").delete().eq("id", input.id).select("id").maybeSingle();
+  if (error || !data) throw new Error("EXCEPTION_DELETE_FAILED");
   revalidatePath("/admin/schedule/exceptions");
 }
 
