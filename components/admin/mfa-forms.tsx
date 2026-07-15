@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { enrolMfaAction, unenrolMfaAction, verifyMfaAction } from "@/app/admin/actions";
+import { cancelPendingMfaAction, enrolMfaAction, unenrolMfaAction, verifyMfaAction } from "@/app/admin/actions";
 import { initialCmsActionState, type MfaEnrolActionState } from "@/lib/cms/action-state";
 import { ActionFeedback } from "./action-feedback";
 import { SubmitButton } from "./submit-button";
@@ -46,6 +46,18 @@ export function MfaVerifyForm({ factorId, label = "Verify this session" }: { fac
       </div>
       <ActionFeedback state={state} />
       <SubmitButton>{label}</SubmitButton>
+    </form>
+  );
+}
+
+export function MfaCancelPendingForm({ factorId }: { factorId: string }) {
+  const [state, action] = useActionState(cancelPendingMfaAction, initialCmsActionState);
+  return (
+    <form action={action} className="admin-form admin-mfa-cancel">
+      <input type="hidden" name="factorId" value={factorId} />
+      <p>Cancel this incomplete setup if the QR code or manual key is no longer available.</p>
+      <ActionFeedback state={state} />
+      <SubmitButton tone="danger">Cancel pending setup</SubmitButton>
     </form>
   );
 }

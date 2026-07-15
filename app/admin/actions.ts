@@ -21,6 +21,7 @@ import {
   contentPublicationInputSchema,
   deleteSectionInputSchema,
   mfaEnrolInputSchema,
+  mfaFactorInputSchema,
   mfaUnenrolInputSchema,
   mfaVerifyInputSchema,
   navigationInputSchema,
@@ -103,14 +104,11 @@ export async function requestMagicLinkAction(
   if (!supabase) return { status: "error", message: "The secure admin service is not configured yet." };
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) return { status: "error", message: "Enter a valid email address." };
-  const { data: invitationEligible } = await supabase.rpc("invitation_email_is_eligible", {
-    candidate_email: email,
-  });
   await supabase.auth.signInWithOtp({
     email,
     options: {
       emailRedirectTo: new URL("/auth/callback?next=/admin", getSiteUrl()).toString(),
-      shouldCreateUser: invitationEligible === true,
+      shouldCreateUser: true,
     },
   });
   return { status: "success", message: "If that address is authorised, a secure sign-in link is on its way." };
@@ -129,6 +127,14 @@ export async function enrolMfaAction(
   try {
     const input = mfaEnrolInputSchema.parse(values(formData));
     const { supabase } = await authenticatedRoleClient(publishingRoles);
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+    if (factorsError) throw new Error("CMS_MFA_FACTORS_FAILED");
+    if ((factors?.all ?? []).some((factor) => factor.factor_type === "totp" && factor.status === "unverified")) {
+      return {
+        status: "error",
+        message: "A pending authenticator setup already exists. Cancel it below before starting again.",
+      };
+    }
     const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: input.friendlyName });
     if (error || !data.totp) throw new Error("CMS_MFA_ENROL_FAILED");
     return {
@@ -138,6 +144,29 @@ export async function enrolMfaAction(
       qrCode: data.totp.qr_code,
       secret: data.totp.secret,
     };
+  } catch (error) {
+    return safeCmsError(error);
+  }
+}
+
+export async function cancelPendingMfaAction(
+  _previous: CmsActionState,
+  formData: FormData,
+): Promise<CmsActionState> {
+  try {
+    const input = mfaFactorInputSchema.parse(values(formData));
+    const { supabase } = await authenticatedRoleClient(publishingRoles);
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+    const pendingFactor = (factors?.all ?? []).find(
+      (factor) => factor.id === input.factorId && factor.factor_type === "totp" && factor.status === "unverified",
+    );
+    if (factorsError || !pendingFactor) {
+      return { status: "error", message: "That pending authenticator setup could not be verified." };
+    }
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: pendingFactor.id });
+    if (error) throw new Error("CMS_MFA_CANCEL_FAILED");
+    revalidatePath("/admin/security");
+    return { status: "success", message: "The pending authenticator setup was cancelled." };
   } catch (error) {
     return safeCmsError(error);
   }
@@ -166,7 +195,14 @@ export async function unenrolMfaAction(
   try {
     const input = mfaUnenrolInputSchema.parse(values(formData));
     const { supabase } = await authorisedClient(publishingRoles);
-    const { error } = await supabase.auth.mfa.unenroll({ factorId: input.factorId });
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+    const verifiedFactor = (factors?.all ?? []).find(
+      (factor) => factor.id === input.factorId && factor.factor_type === "totp" && factor.status === "verified",
+    );
+    if (factorsError || !verifiedFactor) {
+      return { status: "error", message: "That verified authenticator could not be found." };
+    }
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: verifiedFactor.id });
     if (error) throw new Error("CMS_MFA_UNENROL_FAILED");
     revalidatePath("/admin/security");
     return { status: "success", message: "The authenticator factor was removed." };

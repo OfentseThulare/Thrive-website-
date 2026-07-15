@@ -13,6 +13,106 @@ $$;
 revoke all on function public.current_session_is_aal2() from public;
 grant execute on function public.current_session_is_aal2() to authenticated;
 
+create function public.can_mutate_cms_draft()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (select auth.uid()) is not null
+    and public.has_any_role(array['owner','publisher','editor']::public.app_role[])
+    and (
+      (
+        not public.has_any_role(array['owner','publisher']::public.app_role[])
+        and public.has_any_role(array['editor']::public.app_role[])
+      )
+      or (
+        public.has_any_role(array['owner','publisher']::public.app_role[])
+        and public.current_session_is_aal2()
+      )
+    );
+$$;
+
+revoke all on function public.can_mutate_cms_draft() from public;
+grant execute on function public.can_mutate_cms_draft() to authenticated;
+
+drop policy page_drafts_editor_manage on public.page_drafts;
+create policy page_drafts_cms_manage on public.page_drafts for all to authenticated
+using (public.can_mutate_cms_draft())
+with check (updated_by = (select auth.uid()) and public.can_mutate_cms_draft());
+
+drop policy pages_editor_insert_draft on public.pages;
+drop policy pages_editor_update_draft on public.pages;
+drop policy pages_editor_delete_draft on public.pages;
+drop policy pages_publishers_manage on public.pages;
+create policy pages_cms_insert_draft on public.pages for insert to authenticated
+with check (
+  status = 'draft' and published_version_id is null and published_at is null
+  and public.can_mutate_cms_draft()
+);
+create policy pages_cms_update_draft on public.pages for update to authenticated
+using (status = 'draft' and published_version_id is null and public.can_mutate_cms_draft())
+with check (
+  status = 'draft' and published_version_id is null and published_at is null
+  and public.can_mutate_cms_draft()
+);
+create policy pages_cms_delete_draft on public.pages for delete to authenticated
+using (status = 'draft' and published_version_id is null and public.can_mutate_cms_draft());
+
+drop policy page_versions_publish on public.page_versions;
+
+drop policy sections_draft_manage on public.sections;
+create policy sections_cms_manage_draft on public.sections for all to authenticated
+using (public.can_mutate_cms_draft())
+with check (public.can_mutate_cms_draft());
+
+drop policy site_settings_admin_manage on public.site_settings;
+create policy site_settings_privileged_manage on public.site_settings for all to authenticated
+using (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2())
+with check (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2());
+
+drop policy redirects_cms_manage on public.redirects;
+create policy redirects_privileged_manage on public.redirects for all to authenticated
+using (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2())
+with check (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2());
+
+drop policy consent_versions_admin_manage on public.consent_versions;
+create policy consent_versions_privileged_manage on public.consent_versions for all to authenticated
+using (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2())
+with check (public.has_any_role(array['owner','publisher']::public.app_role[]) and public.current_session_is_aal2());
+
+drop policy user_roles_owner_manage on public.user_roles;
+
+drop policy site_assets_editor_insert on storage.objects;
+drop policy site_assets_editor_update on storage.objects;
+drop policy site_assets_editor_delete on storage.objects;
+create policy site_assets_cms_insert on storage.objects for insert to authenticated
+with check (bucket_id = 'site-assets' and public.can_mutate_cms_draft());
+create policy site_assets_cms_update on storage.objects for update to authenticated
+using (
+  bucket_id = 'site-assets' and public.can_mutate_cms_draft()
+  and exists (
+    select 1 from public.assets
+    where assets.storage_path = storage.objects.name and assets.status = 'draft'
+  )
+)
+with check (
+  bucket_id = 'site-assets' and public.can_mutate_cms_draft()
+  and exists (
+    select 1 from public.assets
+    where assets.storage_path = storage.objects.name and assets.status = 'draft'
+  )
+);
+create policy site_assets_cms_delete on storage.objects for delete to authenticated
+using (
+  bucket_id = 'site-assets' and public.can_mutate_cms_draft()
+  and exists (
+    select 1 from public.assets
+    where assets.storage_path = storage.objects.name and assets.status = 'draft'
+  )
+);
+
 create function public.enforce_privileged_cms_mfa()
 returns trigger
 language plpgsql
@@ -120,12 +220,38 @@ drop policy navigation_editor_update_hidden on public.navigation_items;
 drop policy navigation_editor_delete_hidden on public.navigation_items;
 drop policy navigation_publishers_manage on public.navigation_items;
 create policy navigation_cms_insert_draft on public.navigation_items for insert to authenticated
-with check (status = 'draft' and not visible and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+with check (status = 'draft' and not visible and public.can_mutate_cms_draft());
 create policy navigation_cms_update_draft on public.navigation_items for update to authenticated
-using (status = 'draft' and not visible and public.has_any_role(array['owner','publisher','editor']::public.app_role[]))
-with check (status = 'draft' and not visible and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and not visible and public.can_mutate_cms_draft())
+with check (status = 'draft' and not visible and public.can_mutate_cms_draft());
 create policy navigation_cms_delete_draft on public.navigation_items for delete to authenticated
-using (status = 'draft' and not visible and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and not visible and public.can_mutate_cms_draft());
+
+create function public.cms_plain_text_is_valid(value text, maximum_length integer)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select value is not null
+    and maximum_length > 0
+    and char_length(btrim(value)) between 1 and maximum_length
+    and value !~* '<\s*/?\s*(script|iframe|style|link|object|embed|html)\y|javascript\s*:|data\s*:\s*text/html';
+$$;
+
+create function public.cms_iso_date_is_valid(value text)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+begin
+  if value is null or value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then return false; end if;
+  return to_char(value::date, 'YYYY-MM-DD') = value;
+exception when others then
+  return false;
+end;
+$$;
 
 create or replace function public.validate_reusable_content(entry_kind text, value jsonb)
 returns boolean
@@ -153,29 +279,101 @@ begin
   ) then return false; end if;
 
   if entry_kind = 'faq' then
-    return jsonb_typeof(value->'question') = 'string' and jsonb_typeof(value->'answer') = 'string';
+    return coalesce(
+      jsonb_typeof(value->'question') = 'string'
+      and public.cms_plain_text_is_valid(value->>'question', 180)
+      and jsonb_typeof(value->'answer') = 'string'
+      and public.cms_plain_text_is_valid(value->>'answer', 3000),
+      false
+    );
   elsif entry_kind in ('resource', 'service') then
-    return jsonb_typeof(value->'title') = 'string' and jsonb_typeof(value->'body') = 'string'
-      and (value->'href' is null or (jsonb_typeof(value->'href') = 'string' and public.is_safe_cms_href(value->>'href')));
+    return coalesce(
+      jsonb_typeof(value->'title') = 'string'
+      and public.cms_plain_text_is_valid(value->>'title', 180)
+      and jsonb_typeof(value->'body') = 'string'
+      and public.cms_plain_text_is_valid(value->>'body', 3000)
+      and (
+        not (value ? 'href')
+        or (jsonb_typeof(value->'href') = 'string' and public.is_safe_cms_href(value->>'href'))
+      ),
+      false
+    );
   elsif entry_kind = 'credential' then
-    return jsonb_typeof(value->'title') = 'string' and jsonb_typeof(value->'body') = 'string';
+    return coalesce(
+      jsonb_typeof(value->'title') = 'string'
+      and public.cms_plain_text_is_valid(value->>'title', 180)
+      and jsonb_typeof(value->'body') = 'string'
+      and public.cms_plain_text_is_valid(value->>'body', 3000)
+      and (
+        not (value ? 'issuer')
+        or (jsonb_typeof(value->'issuer') = 'string' and public.cms_plain_text_is_valid(value->>'issuer', 180))
+      )
+      and (
+        not (value ? 'verificationStatus')
+        or (
+          jsonb_typeof(value->'verificationStatus') = 'string'
+          and value->>'verificationStatus' in ('pending', 'verified')
+        )
+      ),
+      false
+    );
   elsif entry_kind = 'testimonial' then
-    return jsonb_typeof(value->'quote') = 'string' and jsonb_typeof(value->'attribution') = 'string'
-      and value->'consentConfirmed' = 'true'::jsonb;
+    return coalesce(
+      jsonb_typeof(value->'quote') = 'string'
+      and public.cms_plain_text_is_valid(value->>'quote', 3000)
+      and jsonb_typeof(value->'attribution') = 'string'
+      and public.cms_plain_text_is_valid(value->>'attribution', 180)
+      and jsonb_typeof(value->'consentConfirmed') = 'boolean'
+      and value->'consentConfirmed' = 'true'::jsonb,
+      false
+    );
   elsif entry_kind = 'pricing_note' then
-    return jsonb_typeof(value->'title') = 'string' and jsonb_typeof(value->'body') = 'string';
+    return coalesce(
+      jsonb_typeof(value->'title') = 'string'
+      and public.cms_plain_text_is_valid(value->>'title', 180)
+      and jsonb_typeof(value->'body') = 'string'
+      and public.cms_plain_text_is_valid(value->>'body', 3000),
+      false
+    );
   elsif entry_kind = 'legal_notice' then
-    return jsonb_typeof(value->'title') = 'string' and jsonb_typeof(value->'body') = 'array'
-      and jsonb_array_length(value->'body') between 1 and 20;
+    if not coalesce(
+      jsonb_typeof(value->'title') = 'string'
+      and public.cms_plain_text_is_valid(value->>'title', 180)
+      and jsonb_typeof(value->'body') = 'array',
+      false
+    ) then return false; end if;
+    if jsonb_array_length(value->'body') not between 1 and 20 then return false; end if;
+    if exists (
+      select 1 from jsonb_array_elements(value->'body') item
+      where jsonb_typeof(item) <> 'string' or not public.cms_plain_text_is_valid(item #>> '{}', 1200)
+    ) then return false; end if;
+    if value ? 'effectiveDate' and (
+      jsonb_typeof(value->'effectiveDate') <> 'string'
+      or not public.cms_iso_date_is_valid(value->>'effectiveDate')
+    ) then return false; end if;
+    return true;
   elsif entry_kind = 'pricing' then
-    return jsonb_typeof(value->'title') = 'string' and jsonb_typeof(value->'duration') = 'string'
-      and jsonb_typeof(value->'price') = 'string' and jsonb_typeof(value->'body') = 'string';
+    return coalesce(
+      jsonb_typeof(value->'title') = 'string'
+      and public.cms_plain_text_is_valid(value->>'title', 180)
+      and jsonb_typeof(value->'duration') = 'string'
+      and public.cms_plain_text_is_valid(value->>'duration', 100)
+      and jsonb_typeof(value->'price') = 'string'
+      and public.cms_plain_text_is_valid(value->>'price', 80)
+      and jsonb_typeof(value->'body') = 'string'
+      and public.cms_plain_text_is_valid(value->>'body', 3000),
+      false
+    );
   end if;
   return false;
 end;
 $$;
 
+revoke all on function public.cms_plain_text_is_valid(text,integer) from public;
+revoke all on function public.cms_iso_date_is_valid(text) from public;
 revoke all on function public.validate_reusable_content(text,jsonb) from public;
+grant execute on function public.cms_plain_text_is_valid(text,integer) to authenticated;
+grant execute on function public.cms_iso_date_is_valid(text) to authenticated;
 grant execute on function public.validate_reusable_content(text,jsonb) to authenticated;
 
 alter table public.reusable_entries drop constraint if exists reusable_entries_entry_type_check;
@@ -190,24 +388,24 @@ drop policy reusable_editor_update_draft on public.reusable_entries;
 drop policy reusable_editor_delete_draft on public.reusable_entries;
 drop policy reusable_publishers_manage on public.reusable_entries;
 create policy reusable_cms_insert_draft on public.reusable_entries for insert to authenticated
-with check (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+with check (status = 'draft' and public.can_mutate_cms_draft());
 create policy reusable_cms_update_draft on public.reusable_entries for update to authenticated
-using (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]))
-with check (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and public.can_mutate_cms_draft())
+with check (status = 'draft' and public.can_mutate_cms_draft());
 create policy reusable_cms_delete_draft on public.reusable_entries for delete to authenticated
-using (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and public.can_mutate_cms_draft());
 
 drop policy assets_editor_insert_draft on public.assets;
 drop policy assets_editor_update_draft on public.assets;
 drop policy assets_editor_delete_draft on public.assets;
 drop policy assets_publishers_manage on public.assets;
 create policy assets_cms_insert_draft on public.assets for insert to authenticated
-with check (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+with check (status = 'draft' and public.can_mutate_cms_draft());
 create policy assets_cms_update_draft on public.assets for update to authenticated
-using (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]))
-with check (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and public.can_mutate_cms_draft())
+with check (status = 'draft' and public.can_mutate_cms_draft());
 create policy assets_cms_delete_draft on public.assets for delete to authenticated
-using (status = 'draft' and public.has_any_role(array['owner','publisher','editor']::public.app_role[]));
+using (status = 'draft' and public.can_mutate_cms_draft());
 
 create function public.set_reusable_publication(target_id uuid, make_public boolean)
 returns void language plpgsql security definer set search_path = '' as $$
@@ -263,14 +461,6 @@ alter table public.staff_invitations enable row level security;
 alter table public.staff_invitations force row level security;
 create policy staff_invitations_owner_read on public.staff_invitations for select to authenticated
 using (public.has_any_role(array['owner']::public.app_role[]));
-create policy staff_invitations_owner_insert on public.staff_invitations for insert to authenticated
-with check (invited_by = (select auth.uid()) and public.has_any_role(array['owner']::public.app_role[]) and public.current_session_is_aal2());
-create policy staff_invitations_owner_revoke on public.staff_invitations for update to authenticated
-using (public.has_any_role(array['owner']::public.app_role[]) and public.current_session_is_aal2())
-with check (revoked_by = (select auth.uid()) and public.has_any_role(array['owner']::public.app_role[]) and public.current_session_is_aal2());
-
-drop policy staff_invitations_owner_insert on public.staff_invitations;
-drop policy staff_invitations_owner_revoke on public.staff_invitations;
 
 create function public.protect_staff_invitation_update()
 returns trigger language plpgsql set search_path = '' as $$
@@ -329,17 +519,11 @@ revoke all on function public.revoke_staff_invitation(uuid) from public;
 grant execute on function public.create_staff_invitation(text,public.app_role,timestamptz) to authenticated;
 grant execute on function public.revoke_staff_invitation(uuid) to authenticated;
 
-create function public.invitation_email_is_eligible(candidate_email text)
-returns boolean language sql stable security definer set search_path = '' as $$
-  select char_length(coalesce(candidate_email,'')) <= 320 and exists(select 1 from public.staff_invitations where email = lower(trim(candidate_email))
-    and consumed_at is null and revoked_at is null and expires_at > now());
-$$;
-
 create function public.provision_invited_staff()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare invitation public.staff_invitations%rowtype;
 begin
-  if session_user = 'postgres' then return new; end if;
+  if session_user = 'postgres' and current_setting('app.cms_fixture_bypass', true) = 'on' then return new; end if;
   select * into invitation from public.staff_invitations
   where email = lower(trim(new.email)) and consumed_at is null and revoked_at is null and expires_at > now()
   order by created_at desc limit 1 for update;
@@ -355,16 +539,14 @@ end; $$;
 create trigger provision_invited_staff_after_signup after insert on auth.users
 for each row execute function public.provision_invited_staff();
 
-revoke all on function public.invitation_email_is_eligible(text) from public;
 revoke all on function public.provision_invited_staff() from public;
 revoke all on function public.protect_staff_invitation_update() from public;
-grant execute on function public.invitation_email_is_eligible(text) to anon, authenticated;
 
 create or replace function public.record_content_audit(event_action text,event_entity_type text,event_entity_id text,event_after_data jsonb default null)
 returns void language plpgsql security definer set search_path = '' as $$
 declare actor uuid := (select auth.uid());
 begin
-  if actor is null or not public.has_any_role(array['owner','publisher','editor']::public.app_role[]) then raise exception 'CMS_FORBIDDEN' using errcode = '42501'; end if;
+  if actor is null or not public.can_mutate_cms_draft() then raise exception 'CMS_FORBIDDEN' using errcode = '42501'; end if;
   if event_action not in (
     'page.draft_updated','section.draft_saved','section.draft_deleted','reusable_entry.draft_saved',
     'asset.draft_uploaded','navigation.draft_saved','cms.seed_imported','staff_invitation.created','staff_invitation.revoked'

@@ -4,6 +4,7 @@ create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
 select plan(21);
+select set_config('app.cms_fixture_bypass', 'on', true);
 
 create function public.test_operation_changes_rows(operation_sql text)
 returns boolean

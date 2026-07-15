@@ -1919,6 +1919,21 @@ figure {
   max-width: 440px;
 }
 
+.admin-mfa-pending {
+  border-color: #e2b5ae;
+  background: #fffaf8;
+}
+
+.admin-mfa-cancel {
+  max-width: 520px;
+}
+
+.admin-mfa-cancel > p {
+  margin: 0;
+  color: #5e5a53;
+  line-height: 1.6;
+}
+
 .admin-confirm-panel {
   max-width: 440px;
   margin-top: 18px;
@@ -2243,6 +2258,11 @@ figure {
   .admin-mfa-banner {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .admin-mfa-cancel,
+  .admin-mfa-cancel .admin-button {
+    width: 100%;
   }
 
   .admin-form-grid,

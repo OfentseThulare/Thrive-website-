@@ -154,9 +154,13 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   assert.match(actions, /auth\.mfa\.enroll/);
   assert.match(actions, /auth\.mfa\.challengeAndVerify/);
   assert.match(actions, /auth\.mfa\.unenroll/);
+  assert.match(actions, /listFactors\(\)[\s\S]*?status === "unverified"/);
+  assert.match(actions, /cancelPendingMfaAction/);
   assert.match(security, /Two-step verification/);
-  assert.match(actions, /shouldCreateUser: invitationEligible === true/);
+  assert.match(security, /factors\?\.all/);
+  assert.match(security, /Pending authenticator setup/);
   assert.match(actions, /shouldCreateUser: true/);
+  assert.doesNotMatch(actions, /invitation_email_is_eligible|invitationEligible/);
   assert.match(actions, /rpc\("create_staff_invitation"/);
   assert.match(actions, /rpc\("revoke_staff_invitation"/);
   assert.match(hardening, /create table public\.staff_invitations/);
@@ -166,10 +170,17 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   assert.match(hardening, /role public\.app_role not null check \(role <> 'owner'\)/);
   assert.match(hardening, /INVITATION_REQUIRED/);
   assert.match(hardening, /provision_invited_staff_after_signup/);
+  assert.doesNotMatch(hardening, /invitation_email_is_eligible/);
+  assert.doesNotMatch(hardening, /grant execute[^;]+to anon[^;]*invitation/i);
   assert.match(hardening, /current_session_is_aal2/);
-  for (const name of ["current_session_is_aal2", "set_reusable_publication", "set_asset_publication", "invitation_email_is_eligible", "provision_invited_staff", "protect_staff_invitation_update", "create_staff_invitation", "revoke_staff_invitation"]) {
+  for (const name of ["current_session_is_aal2", "can_mutate_cms_draft", "set_reusable_publication", "set_asset_publication", "provision_invited_staff", "protect_staff_invitation_update", "create_staff_invitation", "revoke_staff_invitation"]) {
     assert.match(hardening, new RegExp(`function public\\.${name}[\\s\\S]*?set search_path = ''`));
     assert.match(hardening, new RegExp(`revoke all on function public\\.${name}`));
+  }
+  assert.match(hardening, /drop policy page_versions_publish on public\.page_versions/);
+  assert.match(hardening, /not public\.has_any_role\(array\['owner','publisher'\]/);
+  for (const policy of ["page_drafts_cms_manage", "sections_cms_manage_draft", "navigation_cms_insert_draft", "reusable_cms_insert_draft", "assets_cms_insert_draft", "site_assets_cms_insert"]) {
+    assert.match(hardening, new RegExp(`create policy ${policy}[\\s\\S]*?can_mutate_cms_draft`));
   }
 });
 
@@ -187,11 +198,18 @@ test("database navigation validation covers ambiguous and executable href forms"
 
 test("security hardening pgTAP suite exercises MFA, invitations, reusable schemas and href validation", async () => {
   const sql = await readFile(new URL("../supabase/tests/004_cms_security_hardening.sql", import.meta.url), "utf8");
-  assert.match(sql, /select plan\(23\)/);
+  assert.match(sql, /select plan\(43\)/);
   assert.match(sql, /AAL1 cannot call the publication RPC directly/);
   assert.match(sql, /AAL2 can call the publication RPC directly/);
+  assert.match(sql, /editor at AAL1 can mutate drafts/);
+  assert.match(sql, /multi-role publisher and editor at AAL1 cannot mutate drafts/);
+  assert.match(sql, /direct page version insertion is denied/);
   assert.match(sql, /nested unsupported keys are rejected/);
-  assert.match(sql, /uninvited account creation/);
+  assert.match(sql, /uninvited account creation is atomic/);
+  assert.match(sql, /eligibility oracle does not exist/);
+  assert.match(sql, /object issuer is rejected/);
+  assert.match(sql, /boolean verification status is rejected/);
+  assert.match(sql, /invalid ISO date is rejected/);
   assert.match(sql, /javascript URL is rejected/);
   assert.match(sql, /credential-bearing URL is rejected/);
 });
