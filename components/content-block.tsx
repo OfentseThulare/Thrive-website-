@@ -1,42 +1,12 @@
 import Image from "next/image";
-import Link from "next/link";
 
+import { ActionLink } from "@/components/action-link";
+import { ReusableCollectionView } from "@/components/reusable-collection";
 import type { ContentBlock } from "@/lib/content/contracts";
+import type { ResolvedReusableEntry } from "@/lib/content/reusable";
 
 function toCssPosition(position: "centre" | "top" | "bottom" | "left" | "right") {
   return position === "centre" ? "center" : position;
-}
-
-export function ActionLink({
-  href,
-  label,
-  quiet = false,
-}: {
-  href: string;
-  label: string;
-  quiet?: boolean;
-}) {
-  const className = quiet ? "text-link" : "button";
-  const content = (
-    <>
-      {label}
-      <span aria-hidden="true">↗</span>
-    </>
-  );
-
-  if (!href.startsWith("/")) {
-    return (
-      <a className={className} href={href} rel={href.startsWith("http") ? "noreferrer" : undefined}>
-        {content}
-      </a>
-    );
-  }
-
-  return (
-    <Link className={className} href={href}>
-      {content}
-    </Link>
-  );
 }
 
 function EditorialImage({
@@ -63,7 +33,13 @@ function EditorialImage({
   );
 }
 
-export function ContentBlockView({ block }: { block: ContentBlock }) {
+export function ContentBlockView({
+  block,
+  reusableEntries = [],
+}: {
+  block: ContentBlock;
+  reusableEntries?: readonly ResolvedReusableEntry[];
+}) {
   switch (block.blockType) {
     case "hero":
       return (
@@ -282,5 +258,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }) {
           </div>
         </section>
       );
+    case "reusable_collection":
+      return <ReusableCollectionView block={block} entries={reusableEntries} />;
   }
 }

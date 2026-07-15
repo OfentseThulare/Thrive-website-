@@ -52,13 +52,16 @@ export async function resolvePublishedPage({
   }
 
   if (!version) {
-    throw new Error("Published page version query returned no content.");
+    return null;
   }
 
-  const publishedPage = pageContentSchema.parse(version.snapshot);
+  const parsedPage = pageContentSchema.safeParse(version.snapshot);
+  if (!parsedPage.success) return null;
+
+  const publishedPage = parsedPage.data;
 
   if (publishedPage.slug !== page.slug || publishedPage.status !== "published") {
-    throw new Error("Published page snapshot does not match its route or publication state.");
+    return null;
   }
 
   return publishedPage;

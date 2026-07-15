@@ -8,6 +8,10 @@ import {
   type PublishedPageSource,
   type PublishedVersionRow,
 } from "./published-page";
+import {
+  resolveReusableCollections,
+  type PublishedReusableSource,
+} from "./reusable";
 import { seedPages } from "./seed";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -39,4 +43,32 @@ export const getPublishedPage = cache(async function getPublishedPage(slug: stri
     : null;
 
   return resolvePublishedPage({ slug, source, seedPages });
+});
+
+export const getPublishedPageView = cache(async function getPublishedPageView(slug: string) {
+  const page = await getPublishedPage(slug);
+  if (!page) return null;
+
+  if (!page.sections.some((section) => section.blockType === "reusable_collection")) {
+    return { page, reusableEntriesBySection: page.sections.map(() => []) };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const source: PublishedReusableSource | null = supabase
+    ? {
+        async getPublishedEntries(entryTypes, keys) {
+          const { data, error } = await supabase
+            .from("reusable_entries")
+            .select("key,entry_type,status,content")
+            .eq("status", "published")
+            .in("entry_type", [...entryTypes])
+            .in("key", [...keys]);
+
+          return { data, error: error ? { code: error.code } : null };
+        },
+      }
+    : null;
+
+  const reusableEntriesBySection = await resolveReusableCollections(page.sections, source);
+  return { page, reusableEntriesBySection };
 });
