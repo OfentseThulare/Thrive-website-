@@ -1,10 +1,39 @@
 import { z } from "zod";
 
-import { contentBlockSchema, pageContentSchema, safeHrefSchema } from "../content/contracts.ts";
+import { contentBlockSchema, pageContentSchema } from "../content/contracts.ts";
 import { cmsRoleSchema } from "./permissions.ts";
 
 const uuid = z.string().uuid();
 const optionalUrl = z.union([z.literal(""), z.string().trim().url().max(500)]);
+
+const cmsHostLabel = "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?";
+const cmsInternalHref = /^\/(?!\/)[A-Za-z0-9._~!$&()*+,;=:@%/?#-]*$/;
+const cmsHttpHref = new RegExp(
+  `^https?://${cmsHostLabel}(?:\\.${cmsHostLabel})*(?::([0-9]{1,5}))?(?:[/?#][A-Za-z0-9._~!$&()*+,;=:@%/?#-]*)?$`,
+);
+const cmsMailtoHref = new RegExp(`^mailto:[A-Za-z0-9._%+-]+@${cmsHostLabel}(?:\\.${cmsHostLabel})*$`);
+const cmsTelephoneHref = /^tel:\+?[0-9][0-9()-]{6,24}$/;
+
+export function isSafeCmsHref(value: string) {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint < 0x21 || codePoint > 0x7e) return false;
+  }
+  if (cmsInternalHref.test(value)) return true;
+  const httpMatch = cmsHttpHref.exec(value);
+  if (httpMatch) {
+    if (!httpMatch[1]) return true;
+    const port = Number(httpMatch[1]);
+    return Number.isInteger(port) && port >= 1 && port <= 65_535;
+  }
+  return cmsMailtoHref.test(value) || cmsTelephoneHref.test(value);
+}
+
+export const cmsHrefSchema = z
+  .string()
+  .min(1)
+  .max(300)
+  .refine(isSafeCmsHref, "Use an approved CMS path or explicit lowercase http, https, mailto or tel link");
 
 export const pageDraftInputSchema = z.object({
   pageId: uuid,
@@ -73,12 +102,12 @@ function jsonContent<T extends z.ZodType>(schema: T) {
 
 export const reusableEntryInputSchema = z.discriminatedUnion("entryType", [
   z.object({ ...reusableBase, entryType: z.literal("faq"), content: jsonContent(z.object({ question: safePlainText.max(180), answer: safePlainText }).strict()) }),
-  z.object({ ...reusableBase, entryType: z.literal("resource"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: safeHrefSchema.optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("resource"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: cmsHrefSchema.optional() }).strict()) }),
   z.object({ ...reusableBase, entryType: z.literal("credential"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, issuer: safePlainText.max(180).optional(), verificationStatus: z.enum(["pending", "verified"]).optional() }).strict()) }),
   z.object({ ...reusableBase, entryType: z.literal("testimonial"), content: jsonContent(z.object({ quote: safePlainText, attribution: safePlainText.max(180), consentConfirmed: z.literal(true) }).strict()) }),
   z.object({ ...reusableBase, entryType: z.literal("pricing_note"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText }).strict()) }),
   z.object({ ...reusableBase, entryType: z.literal("legal_notice"), content: jsonContent(z.object({ title: safePlainText.max(180), body: z.array(safePlainText.max(1200)).min(1).max(20), effectiveDate: z.string().date().optional() }).strict()) }),
-  z.object({ ...reusableBase, entryType: z.literal("service"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: safeHrefSchema.optional() }).strict()) }),
+  z.object({ ...reusableBase, entryType: z.literal("service"), content: jsonContent(z.object({ title: safePlainText.max(180), body: safePlainText, href: cmsHrefSchema.optional() }).strict()) }),
   z.object({ ...reusableBase, entryType: z.literal("pricing"), content: jsonContent(z.object({ title: safePlainText.max(180), duration: safePlainText.max(100), price: safePlainText.max(80), body: safePlainText }).strict()) }),
 ]);
 
@@ -86,7 +115,7 @@ export const navigationInputSchema = z.object({
   itemId: uuid.optional(),
   location: z.enum(["primary", "footer", "legal"]),
   label: z.string().trim().min(1).max(80),
-  href: safeHrefSchema,
+  href: cmsHrefSchema,
   position: z.coerce.number().int().min(0).max(100),
 });
 

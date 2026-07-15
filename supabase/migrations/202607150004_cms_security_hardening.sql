@@ -191,22 +191,32 @@ $$;
 
 create function public.is_safe_cms_href(value text)
 returns boolean
-language sql
+language plpgsql
 immutable
 set search_path = ''
 as $$
-  select value is not null
-    and char_length(value) between 1 and 300
-    and value !~ '[[:cntrl:]\\]'
-    and (
-      ((value = '/' or value ~ '^/[A-Za-z0-9]') and value !~ '^//' and value !~ '[[:space:]]')
-      or (
-        value ~ '^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:[/?#][^[:space:]]*)?$'
-        and value !~ '^https?://[^/]*@'
-      )
-      or value ~ '^mailto:[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
-      or value ~ '^tel:\+?[0-9 ()-]{7,25}$'
-    );
+declare
+  port_match text[];
+  port_number integer;
+begin
+  if value is null or char_length(value) not between 1 and 300 then return false; end if;
+  if octet_length(value) <> char_length(value) or value ~ '[[:space:][:cntrl:]]' then return false; end if;
+
+  if value ~ '^/[A-Za-z0-9._~!$&()*+,;=:@%/?#-]*$' and value !~ '^//' then return true; end if;
+
+  port_match := regexp_match(
+    value,
+    '^https?://[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::([0-9]{1,5}))?(?:[/?#][A-Za-z0-9._~!$&()*+,;=:@%/?#-]*)?$'
+  );
+  if port_match is not null then
+    if port_match[1] is null then return true; end if;
+    port_number := port_match[1]::integer;
+    return port_number between 1 and 65535;
+  end if;
+
+  return value ~ '^mailto:[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$'
+    or value ~ '^tel:\+?[0-9][0-9()-]{6,24}$';
+end;
 $$;
 
 revoke all on function public.is_safe_cms_href(text) from public;

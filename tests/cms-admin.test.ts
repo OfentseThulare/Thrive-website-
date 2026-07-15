@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { CmsAuthorisationError, hasCmsRole, requireCmsRole } from "../lib/cms/permissions.ts";
 import {
+  cmsHrefSchema,
   navigationInputSchema,
   pageDraftInputSchema,
   publishPageInputSchema,
@@ -45,6 +46,45 @@ test("CMS payloads reject invalid identifiers, unsafe navigation and unvalidated
   assert.equal(navigationInputSchema.safeParse({ location: "primary", label: "Bad", href: "javascript:alert(1)", position: 0 }).success, false);
   assert.equal(sectionInputSchema.safeParse({ pageSlug: "home", position: 0, visible: true, variant: "default", content: '{"blockType":"raw_html","html":"<script>"}' }).success, false);
   assert.equal(publishPageInputSchema.safeParse({ pageId, expectedSnapshot: "not json" }).success, false);
+});
+
+test("CMS navigation and reusable links share the exact database-safe subset", () => {
+  const accepted = [
+    "/",
+    "/?from=cms",
+    "/about?from=cms#team",
+    "https://example.org/resource",
+    "http://localhost:1/preview",
+    "https://example.org:65535/resource?from=cms#details",
+    "mailto:care@example.org",
+    "tel:+27825550100",
+  ];
+  const rejected = [
+    "/about us",
+    " /about",
+    "/about\n",
+    "//malicious.example/path",
+    "/\\malicious.example/path",
+    "https://user:password@example.org/private",
+    "https://münich.example/resource",
+    "https://[2001:db8::1]/resource",
+    "https://example.org:0/resource",
+    "https://example.org:99999/resource",
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+  ];
+
+  for (const href of accepted) {
+    assert.equal(cmsHrefSchema.safeParse(href).success, true, href);
+    assert.equal(navigationInputSchema.safeParse({ location: "primary", label: "Link", href, position: 0 }).success, true, href);
+    assert.equal(reusableEntryInputSchema.safeParse({ key: "resource-link", status: "draft", entryType: "resource", content: { title: "Resource", body: "Approved body", href } }).success, true, href);
+  }
+
+  for (const href of rejected) {
+    assert.equal(cmsHrefSchema.safeParse(href).success, false, href);
+    assert.equal(navigationInputSchema.safeParse({ location: "primary", label: "Link", href, position: 0 }).success, false, href);
+    assert.equal(reusableEntryInputSchema.safeParse({ key: "resource-link", status: "draft", entryType: "resource", content: { title: "Resource", body: "Approved body", href } }).success, false, href);
+  }
 });
 
 test("reusable entries use discriminated schemas and recursively reject executable content", () => {
@@ -198,7 +238,7 @@ test("database navigation validation covers ambiguous and executable href forms"
 
 test("security hardening pgTAP suite exercises MFA, invitations, reusable schemas and href validation", async () => {
   const sql = await readFile(new URL("../supabase/tests/004_cms_security_hardening.sql", import.meta.url), "utf8");
-  assert.match(sql, /select plan\(43\)/);
+  assert.match(sql, /select plan\(51\)/);
   assert.match(sql, /AAL1 cannot call the publication RPC directly/);
   assert.match(sql, /AAL2 can call the publication RPC directly/);
   assert.match(sql, /editor at AAL1 can mutate drafts/);
@@ -212,6 +252,12 @@ test("security hardening pgTAP suite exercises MFA, invitations, reusable schema
   assert.match(sql, /invalid ISO date is rejected/);
   assert.match(sql, /javascript URL is rejected/);
   assert.match(sql, /credential-bearing URL is rejected/);
+  assert.match(sql, /root path with a query is safe/);
+  assert.match(sql, /lowest explicit port is safe/);
+  assert.match(sql, /highest explicit port is safe/);
+  assert.match(sql, /Unicode hostname is rejected/);
+  assert.match(sql, /IPv6 hostname is rejected/);
+  assert.match(sql, /out of range port is rejected/);
 });
 
 test("no application source references a Supabase service role credential", async () => {

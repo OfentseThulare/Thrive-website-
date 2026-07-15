@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(43);
+select plan(51);
 select set_config('app.cms_fixture_bypass', 'on', true);
 
 insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -66,11 +66,14 @@ end;
 $$;
 
 select ok(public.is_safe_cms_href('/'), 'root path is safe');
+select ok(public.is_safe_cms_href('/?from=cms'), 'root path with a query is safe');
 select ok(public.is_safe_cms_href('/about?from=nav#team'), 'internal path is safe');
 select ok(public.is_safe_cms_href('https://example.org/resource'), 'HTTPS URL is safe');
 select ok(public.is_safe_cms_href('http://localhost:3000/preview'), 'HTTP URL is structurally safe');
+select ok(public.is_safe_cms_href('http://localhost:1/preview'), 'lowest explicit port is safe');
+select ok(public.is_safe_cms_href('https://example.org:65535/resource'), 'highest explicit port is safe');
 select ok(public.is_safe_cms_href('mailto:hello@example.org'), 'mailto URL is safe');
-select ok(public.is_safe_cms_href('tel:+27 11 123 4567'), 'telephone URL is safe');
+select ok(public.is_safe_cms_href('tel:+27111234567'), 'telephone URL is safe');
 
 select ok(not public.is_safe_cms_href('javascript:alert(1)'), 'javascript URL is rejected');
 select ok(not public.is_safe_cms_href('data:text/html,<script>'), 'data URL is rejected');
@@ -78,6 +81,11 @@ select ok(not public.is_safe_cms_href('//evil.example/path'), 'protocol-relative
 select ok(not public.is_safe_cms_href('/safe\evil'), 'backslash URL is rejected');
 select ok(not public.is_safe_cms_href('https://user:pass@example.org/path'), 'credential-bearing URL is rejected');
 select ok(not public.is_safe_cms_href('/safe' || chr(10) || 'evil'), 'control characters are rejected');
+select ok(not public.is_safe_cms_href('/about us'), 'unescaped spaces are rejected');
+select ok(not public.is_safe_cms_href('https://münich.example/resource'), 'Unicode hostname is rejected');
+select ok(not public.is_safe_cms_href('https://[2001:db8::1]/resource'), 'IPv6 hostname is rejected');
+select ok(not public.is_safe_cms_href('https://example.org:0/resource'), 'zero port is rejected');
+select ok(not public.is_safe_cms_href('https://example.org:99999/resource'), 'out of range port is rejected');
 
 select ok(public.validate_reusable_content('faq', '{"question":"Question?","answer":"Approved answer."}'::jsonb), 'valid FAQ is accepted');
 select ok(not public.validate_reusable_content('faq', '{"question":"Question?","answer":"Approved","nested":{"script":"bad"}}'::jsonb), 'nested unsupported keys are rejected');
