@@ -18,7 +18,13 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The public home page works without Supabase settings. Set both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to use published database content. A partial or malformed pair is rejected.
+The complete public site works without Supabase settings. It includes Home, About, Services, three dedicated service pages, Our Approach, PEMS, Pricing, Booking Preparation and Resources. Set both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to use published database content. A partial or malformed pair is rejected.
+
+Public pages use validated seed content whenever the CMS has no published record for that route. This keeps early review reliable without weakening the publication boundary for content that does exist in Supabase.
+
+## Content and imagery records
+
+The source content audit is recorded in `docs/CONTENT-COVERAGE.md`. Stock image provenance and use restrictions are recorded in `public/images/metadata.json` and `docs/IMAGE-LICENCES.md`. Original stock downloads are retained outside the public output in `docs/image-sources`, while optimised WebP derivatives are served through `next/image`.
 
 ## Checks
 

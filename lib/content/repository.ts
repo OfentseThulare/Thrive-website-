@@ -32,7 +32,7 @@ export const getPublishedPage = cache(async function getPublishedPage(
     .single<PageRow>();
 
   if (pageError) {
-    if (pageError.code === "PGRST116") return null;
+    if (pageError.code === "PGRST116") return seedPages.get(slug) ?? null;
     throw new Error(`Published page query failed: ${pageError.code}`);
   }
 

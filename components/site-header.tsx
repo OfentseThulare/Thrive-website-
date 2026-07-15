@@ -10,6 +10,7 @@ const primaryLinks = [
   { href: "/about", label: "About Renny" },
   { href: "/services", label: "Services" },
   { href: "/approach", label: "Our approach" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/resources", label: "Resources" },
 ];
 
@@ -37,7 +38,7 @@ export function SiteHeader() {
     document.body.classList.add("mobile-menu-open");
     requestAnimationFrame(() => firstLinkRef.current?.focus());
 
-    const desktopQuery = window.matchMedia("(min-width: 901px)");
+    const desktopQuery = window.matchMedia("(min-width: 1081px)");
     const closeAtDesktop = (event: MediaQueryListEvent) => {
       if (event.matches) closeMenu(false);
     };
@@ -92,7 +93,7 @@ export function SiteHeader() {
             </Link>
           ))}
           <Link className="button button-small" href="/book">
-            Book a session
+            Prepare to book
           </Link>
         </nav>
         <button
@@ -146,7 +147,7 @@ export function SiteHeader() {
               </Link>
             ))}
             <Link className="button" href="/book" onClick={() => closeMenu(false)}>
-              Book a session
+              Prepare to book
             </Link>
           </nav>
           <p className="mobile-menu-note">Virtual cancer coaching and counselling support.</p>

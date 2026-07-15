@@ -33,6 +33,6 @@ test("mobile navigation closes on route selection and desktop breakpoint changes
   const header = await readFile(headerUrl, "utf8");
 
   assert.match(header, /onClick=\{\(\) => closeMenu\(false\)\}/);
-  assert.match(header, /matchMedia\("\(min-width: 901px\)"\)/);
+  assert.match(header, /matchMedia\("\(min-width: 1081px\)"\)/);
   assert.match(header, /document\.body\.classList\.remove\("mobile-menu-open"\)/);
 });
