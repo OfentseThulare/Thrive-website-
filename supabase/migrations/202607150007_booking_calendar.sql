@@ -173,23 +173,16 @@ end; $$;
 revoke all on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) to service_role;
 
-create function public.recover_booking_hold(p_idempotency_key uuid, p_new_access_token_hash text)
+create function public.recover_booking_hold(p_idempotency_key uuid, p_expected_access_token_hash text)
 returns table(public_reference text, hold_expires_at timestamptz)
 language plpgsql security definer set search_path = '' as $$
 begin
   perform public.expire_stale_booking_holds();
-  if p_new_access_token_hash !~ '^[a-f0-9]{64}$' then return; end if;
-  return query
-  with recovered as (
-    update public.bookings set access_token_hash = p_new_access_token_hash, updated_at = now()
-    where idempotency_key = p_idempotency_key
-      and state in ('HELD', 'PAYMENT_PENDING') and bookings.hold_expires_at > now()
-    returning id, bookings.public_reference, bookings.hold_expires_at
-  ), access_event as (
-    insert into public.booking_events(booking_id, event_type, metadata)
-    select id, 'hold.access_rotated', '{}'::jsonb from recovered
-  )
-  select recovered.public_reference, recovered.hold_expires_at from recovered;
+  if p_expected_access_token_hash !~ '^[a-f0-9]{64}$' then return; end if;
+  return query select b.public_reference, b.hold_expires_at from public.bookings b
+    where b.idempotency_key = p_idempotency_key
+      and b.access_token_hash = p_expected_access_token_hash
+      and b.state in ('HELD', 'PAYMENT_PENDING') and b.hold_expires_at > now();
 end; $$;
 revoke all on function public.recover_booking_hold(uuid, text) from public, anon, authenticated;
 grant execute on function public.recover_booking_hold(uuid, text) to service_role;

@@ -78,16 +78,24 @@ test("booking server environment is complete, private and fail closed", () => {
     NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_SERVICE_ROLE_KEY: "a-valid-looking-service-role-key",
     BOOKING_RATE_LIMIT_SECRET: "too-short",
+    BOOKING_ACCESS_TOKEN_SECRET: "a-private-access-token-secret-of-32-chars",
   }), /at least 32 characters/);
+  assert.throws(() => parseBookingServerEnvironment({
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "a-valid-looking-service-role-key",
+    BOOKING_RATE_LIMIT_SECRET: "a-private-rate-limit-secret-with-32-chars",
+  }), /BOOKING_ACCESS_TOKEN_SECRET/);
   assert.deepEqual(parseBookingServerEnvironment({
     NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_SERVICE_ROLE_KEY: "a-valid-looking-service-role-key",
     BOOKING_RATE_LIMIT_SECRET: "a-private-rate-limit-secret-with-32-chars",
+    BOOKING_ACCESS_TOKEN_SECRET: "a-private-access-token-secret-of-32-chars",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: "not-returned",
   }), {
     url: "https://example.supabase.co",
     serviceRoleKey: "a-valid-looking-service-role-key",
     rateLimitSecret: "a-private-rate-limit-secret-with-32-chars",
+    accessTokenSecret: "a-private-access-token-secret-of-32-chars",
   });
 });
 

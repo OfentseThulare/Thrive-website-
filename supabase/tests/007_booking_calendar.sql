@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(33);
+select plan(34);
 
 select set_config('app.cms_fixture_bypass', 'on', true);
 insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -70,9 +70,10 @@ select lives_ok(
   )$$,
   'repeating the same idempotency key and token is idempotent'
 );
-select is((select count(*)::integer from public.recover_booking_hold('83000000-0000-0000-0000-000000000001', repeat('d',64))), 1, 'a lost response can recover the live hold with the same idempotency key');
-select is((select count(*)::integer from public.get_booking_status(repeat('a',64))), 0, 'recovery invalidates the previous access token');
-select is((select count(*)::integer from public.get_booking_status(repeat('d',64))), 1, 'recovery grants the rotated access token access to the same hold');
+select is((select count(*)::integer from public.recover_booking_hold('83000000-0000-0000-0000-000000000001', repeat('a',64))), 1, 'a lost response recovers the live hold with the stable expected credential');
+select is((select count(*)::integer from public.get_booking_status(repeat('a',64))), 1, 'recovery leaves the stable access credential valid');
+select is((select count(*)::integer from public.recover_booking_hold('83000000-0000-0000-0000-000000000001', repeat('d',64))), 0, 'recovery rejects a mismatched access credential');
+select is((select count(*)::integer from public.get_booking_status(repeat('d',64))), 0, 'a mismatched credential gains no booking access');
 select throws_ok(
   $$select * from public.create_booking_hold(
     '81000000-0000-0000-0000-000000000002',

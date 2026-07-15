@@ -28,18 +28,21 @@ test("slot and hold RPCs enforce horizon, consent, exact slots, expiry and ZAR s
   assert.doesNotMatch(sql, /p_client_name !~ '\\\\S'/);
 });
 
-test("lost hold responses rotate access atomically without exposing recovery publicly", async () => {
-  const [sql, holdRoute] = await Promise.all([
+test("lost hold responses recover only the stable expected access credential", async () => {
+  const [sql, holdRoute, server] = await Promise.all([
     readFile(migrationUrl, "utf8"),
     readFile(new URL("../app/api/booking/hold/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/booking/server.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(sql, /update public\.bookings set access_token_hash = p_new_access_token_hash/);
-  assert.match(sql, /idempotency_key = p_idempotency_key[\s\S]*hold_expires_at > now\(\)/);
+  assert.match(sql, /idempotency_key = p_idempotency_key[\s\S]*access_token_hash = p_expected_access_token_hash[\s\S]*hold_expires_at > now\(\)/);
+  assert.doesNotMatch(sql, /recover_booking_hold[\s\S]*update public\.bookings set access_token_hash/);
   assert.match(sql, /grant execute on function public\.recover_booking_hold\(uuid, text\) to service_role/);
   assert.doesNotMatch(sql, /grant execute on function public\.recover_booking_hold[^;]*to (?:anon|authenticated)/);
   assert.match(holdRoute, /recover_booking_hold/);
+  assert.match(holdRoute, /p_expected_access_token_hash: secrets\.accessTokenHash/);
   assert.match(holdRoute, /setBookingAccessCookie\(secrets\.accessToken\)/);
   assert.match(holdRoute, /if \(recovered\)[\s\S]*return privateJson\(\{ ok: true, next: "\/book\/status" \}/);
+  assert.match(server, /deriveBookingAccessToken\(idempotencyKey, accessTokenSecret\)/);
 });
 
 test("schedule mutations require owner MFA at the database boundary", async () => {
@@ -110,5 +113,5 @@ test("privileged booking credentials remain isolated to server-only modules", as
   assert.match(rateLimit, /^import "server-only";/);
   assert.match(adminClient, /serviceRoleKey/);
   assert.doesNotMatch(browserClient, /SERVICE_ROLE|serviceRole/i);
-  assert.doesNotMatch(bookingExperience, /SERVICE_ROLE|serviceRole|rateLimitSecret/i);
+  assert.doesNotMatch(bookingExperience, /SERVICE_ROLE|serviceRole|rateLimitSecret|accessTokenSecret/i);
 });

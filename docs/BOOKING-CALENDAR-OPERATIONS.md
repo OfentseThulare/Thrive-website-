@@ -7,7 +7,7 @@ Public booking is deliberately unavailable until all of the following exist:
 * A migrated Supabase production project with active services, working hours and one active booking consent version.
 * `BOOKING_CALENDAR_MODE=google`.
 * Server-only `GOOGLE_CALENDAR_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN` values.
-* Server-only `SUPABASE_SERVICE_ROLE_KEY` and a random `BOOKING_RATE_LIMIT_SECRET` containing at least 32 characters.
+* Server-only `SUPABASE_SERVICE_ROLE_KEY`, `BOOKING_RATE_LIMIT_SECRET` and `BOOKING_ACCESS_TOKEN_SECRET` values. Each booking secret must be random and contain at least 32 characters.
 * A Google OAuth client authorised for the Calendar FreeBusy and Events APIs. The selected calendar must be shared with the authorised Google account.
 
 Use `BOOKING_CALENDAR_MODE=disabled` before launch. `mock` is deterministic and intended only for automated tests or local development. The application rejects mock mode when `NODE_ENV=production`.
@@ -18,7 +18,7 @@ The public form accepts full name, email and optional telephone only. Do not add
 
 Availability, status and contact pages use `Cache-Control: no-store`. Hold, status and release RPCs are callable only through the server-only booking client, so direct Supabase callers cannot bypass the Google FreeBusy check. A database-backed limiter stores only a secret-peppered SHA-256 network fingerprint. Platform firewall limits remain recommended as an additional layer before opening production traffic.
 
-Each hold lasts exactly 15 minutes. The browser retains one random UUID idempotency key while a selected slot is being submitted. If the response is lost, a rate-limited retry with that same high-entropy key atomically rotates a new access token for the existing live hold. The private recovery RPC returns no contact information and is executable only by the server role.
+Each hold lasts exactly 15 minutes. The browser retains one random UUID idempotency key while a selected slot is being submitted. The server derives an opaque access token with a domain-separated HMAC over that key. A lost-response retry and concurrent replay therefore receive the same credential without exposing the derivation secret to the browser. The private recovery RPC requires the matching token hash, returns no contact information, changes no state and is executable only by the server role.
 
 ## Time and concurrency
 

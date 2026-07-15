@@ -1,15 +1,18 @@
 import "server-only";
 
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 
 import { createBookingAdminClient } from "@/lib/supabase/booking-admin";
+import { getBookingServerEnvironment } from "@/lib/env";
+import { deriveBookingAccessToken } from "./access-token";
 import { BOOKING_COOKIE, type BookingStatus } from "./types";
 
-export function createBookingSecrets() {
-  const accessToken = randomBytes(32).toString("base64url");
+export function createBookingSecrets(idempotencyKey: string) {
+  const { accessTokenSecret } = getBookingServerEnvironment();
+  const accessToken = deriveBookingAccessToken(idempotencyKey, accessTokenSecret);
   const publicReference = `TTC-${randomBytes(9).toString("hex").slice(0, 12).toUpperCase()}`;
-  return { accessToken, accessTokenHash: hashBookingToken(accessToken), publicReference, idempotencyKey: randomUUID() };
+  return { accessToken, accessTokenHash: hashBookingToken(accessToken), publicReference };
 }
 
 export function hashBookingToken(token: string) {

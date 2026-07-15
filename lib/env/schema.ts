@@ -21,6 +21,7 @@ const bookingServerSchema = z.object({
   ),
   serviceRoleKey: z.string().trim().min(20, "Supabase service role key is too short"),
   rateLimitSecret: z.string().trim().min(32, "Booking rate limit secret must contain at least 32 characters"),
+  accessTokenSecret: z.string().trim().min(32, "Booking access token secret must contain at least 32 characters"),
 });
 
 export type BookingServerEnvironment = z.infer<typeof bookingServerSchema>;
@@ -61,13 +62,14 @@ export function parsePublicSupabaseEnvironment(
 
 export function parseBookingServerEnvironment(source: EnvironmentSource): BookingServerEnvironment {
   const values = requireServerEnvironment(
-    ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BOOKING_RATE_LIMIT_SECRET"] as const,
+    ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BOOKING_RATE_LIMIT_SECRET", "BOOKING_ACCESS_TOKEN_SECRET"] as const,
     source,
   );
   return bookingServerSchema.parse({
     url: values.NEXT_PUBLIC_SUPABASE_URL,
     serviceRoleKey: values.SUPABASE_SERVICE_ROLE_KEY,
     rateLimitSecret: values.BOOKING_RATE_LIMIT_SECRET,
+    accessTokenSecret: values.BOOKING_ACCESS_TOKEN_SECRET,
   });
 }
 

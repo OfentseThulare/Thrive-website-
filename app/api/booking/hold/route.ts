@@ -21,10 +21,10 @@ export async function POST(request: Request) {
   try { payload = await request.json(); } catch { return privateJson({ message: "The booking request was not valid." }, { status: 400 }); }
   const parsed = holdRequestSchema.safeParse(payload);
   if (!parsed.success) return privateJson({ message: "Check the highlighted booking details and try again." }, { status: 400 });
-  const secrets = createBookingSecrets();
+  const secrets = createBookingSecrets(parsed.data.idempotencyKey);
   const { data: recovered, error: recoveryError } = await supabase.rpc("recover_booking_hold", {
     p_idempotency_key: parsed.data.idempotencyKey,
-    p_new_access_token_hash: secrets.accessTokenHash,
+    p_expected_access_token_hash: secrets.accessTokenHash,
   }).maybeSingle();
   if (recoveryError) return privateJson({ message: "The booking request could not be verified safely." }, { status: 503 });
   if (recovered) {
