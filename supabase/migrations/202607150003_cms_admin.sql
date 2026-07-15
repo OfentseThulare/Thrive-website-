@@ -33,7 +33,7 @@ alter table public.sections add constraint sections_block_type_check check (
   block_type in (
     'hero', 'introduction', 'card_collection', 'editorial_split',
     'feature_list', 'process', 'comparison', 'pricing', 'faq',
-    'notice', 'call_to_action', 'reusable_collection'
+    'notice', 'call_to_action'
   )
 );
 

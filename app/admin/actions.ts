@@ -60,24 +60,6 @@ async function authorisedClient(roles: Parameters<typeof requireCmsRole>[1]) {
   return { supabase, identity };
 }
 
-async function audit(
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
-  actorId: string,
-  action: string,
-  entityType: string,
-  entityId: string,
-  afterData?: Record<string, unknown>,
-) {
-  if (!supabase) throw new Error("CMS_NOT_CONFIGURED");
-  const { error } = await supabase.rpc("record_content_audit", {
-    event_action: action,
-    event_entity_type: entityType,
-    event_entity_id: entityId,
-    event_after_data: afterData ?? null,
-  });
-  if (error) throw new Error("CMS_AUDIT_FAILED");
-}
-
 export async function signInAction(
   _previous: CmsActionState,
   formData: FormData,
@@ -233,7 +215,6 @@ export async function savePageDraftAction(
       updated_by: identity.userId,
     });
     if (error) throw new Error("CMS_PAGE_DRAFT_SAVE_FAILED");
-    await audit(supabase, identity.userId, "page.draft_updated", "page", input.pageId);
     revalidatePath(`/admin/pages/${input.pageId}`);
     return { status: "success", message: "Draft settings saved. The public page has not changed." };
   } catch (error) {
@@ -264,10 +245,6 @@ export async function saveSectionAction(
       : supabase.from("sections").insert(record);
     const { data: saved, error } = await mutation.select("id").maybeSingle();
     if (error || !saved) throw new Error("CMS_SECTION_SAVE_FAILED");
-    await audit(supabase, identity.userId, "section.draft_saved", "page", input.pageSlug, {
-      sectionId: input.sectionId ?? "new",
-      blockType: input.content.blockType,
-    });
     revalidatePath(`/admin/preview/${input.pageSlug}`);
     return { status: "success", message: "Section draft saved. Preview it before publishing." };
   } catch (error) {
@@ -281,10 +258,9 @@ export async function deleteSectionAction(
 ): Promise<CmsActionState> {
   try {
     const input = deleteSectionInputSchema.parse(values(formData));
-    const { supabase, identity } = await authorisedClient(contentRoles);
+    const { supabase } = await authorisedClient(contentRoles);
     const { data: deleted, error } = await supabase.from("sections").delete().eq("id", input.sectionId).select("id").maybeSingle();
     if (error || !deleted) throw new Error("CMS_SECTION_DELETE_FAILED");
-    await audit(supabase, identity.userId, "section.draft_deleted", "section", input.sectionId);
     revalidatePath(`/admin/preview/${input.pageSlug}`);
     return { status: "success", message: "Draft section removed." } satisfies CmsActionState;
   } catch (error) {
@@ -352,7 +328,6 @@ export async function saveReusableEntryAction(
       : supabase.from("reusable_entries").insert(record);
     const { data: saved, error } = await mutation.select("id").maybeSingle();
     if (error || !saved) throw new Error("CMS_ENTRY_SAVE_FAILED");
-    await audit(supabase, identity.userId, "reusable_entry.draft_saved", "reusable_entry", input.entryId ?? input.key);
     revalidatePath("/admin/reusable");
     return { status: "success", message: "Reusable draft saved." };
   } catch (error) {
@@ -366,7 +341,7 @@ export async function saveNavigationAction(
 ): Promise<CmsActionState> {
   try {
     const input = navigationInputSchema.parse(values(formData));
-    const { supabase, identity } = await authorisedClient(contentRoles);
+    const { supabase } = await authorisedClient(contentRoles);
     const record = { ...input, itemId: undefined } as Record<string, unknown>;
     delete record.itemId;
     Object.assign(record, { status: "draft", visible: false });
@@ -383,7 +358,6 @@ export async function saveNavigationAction(
       : supabase.from("navigation_items").insert(dbRecord);
     const { data: saved, error } = await mutation.select("id").maybeSingle();
     if (error || !saved) throw new Error("CMS_NAVIGATION_SAVE_FAILED");
-    await audit(supabase, identity.userId, "navigation.draft_saved", "navigation_item", input.itemId ?? input.href);
     revalidatePath("/admin/navigation");
     return { status: "success", message: "Navigation draft saved. A publisher must make it live." };
   } catch (error) {
@@ -449,7 +423,6 @@ export async function uploadAssetAction(
       await supabase.storage.from("site-assets").remove([storagePath]);
       throw new Error("CMS_ASSET_METADATA_FAILED");
     }
-    await audit(supabase, identity.userId, "asset.draft_uploaded", "asset", storagePath, { mimeType: file.type, byteSize: file.size });
     revalidatePath("/admin/assets");
     return { status: "success", message: "Image uploaded privately. It is not public until approved." };
   } catch (error) {
@@ -508,6 +481,12 @@ export async function createStaffInvitationAction(
       candidate_role: input.role,
       candidate_expires_at: expiresAt,
     });
+    if (error?.message.includes("CMS_INVITATION_USER_EXISTS")) {
+      return {
+        status: "error",
+        message: "That email already has an admin account. Use Role management to change the person's access instead.",
+      };
+    }
     if (error || !data) throw new Error("CMS_INVITATION_CREATE_FAILED");
     const { error: deliveryError } = await supabase.auth.signInWithOtp({
       email: input.email,

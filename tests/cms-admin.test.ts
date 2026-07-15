@@ -134,6 +134,7 @@ test("public content and navigation repositories never query private draft recor
 
 test("every CMS mutation rechecks identity and role while publication uses audited RPCs", async () => {
   const actions = await readFile(new URL("../app/admin/actions.ts", import.meta.url), "utf8");
+  const forward = await readFile(new URL("../supabase/migrations/202607150006_cms_audit_and_bootstrap_rotation.sql", import.meta.url), "utf8");
   for (const action of [
     "savePageDraftAction",
     "saveSectionAction",
@@ -157,8 +158,9 @@ test("every CMS mutation rechecks identity and role while publication uses audit
   }
   assert.match(actions, /\.rpc\("publish_page"/);
   assert.match(actions, /\.rpc\("restore_page_version"/);
-  assert.match(actions, /page\.draft_updated/);
-  assert.match(actions, /asset\.draft_uploaded/);
+  assert.match(forward, /create trigger page_drafts_audit_dml/);
+  assert.match(forward, /create trigger assets_audit_dml/);
+  assert.doesNotMatch(actions, /await audit\(|rpc\("record_content_audit"/);
   assert.doesNotMatch(actions, /SERVICE_ROLE|service[_-]?role/i);
 });
 
@@ -190,6 +192,7 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   const security = await readFile(new URL("../app/admin/(protected)/security/page.tsx", import.meta.url), "utf8");
   const config = await readFile(new URL("../supabase/config.toml", import.meta.url), "utf8");
   const hardening = await readFile(new URL("../supabase/migrations/202607150004_cms_security_hardening.sql", import.meta.url), "utf8");
+  const forward = await readFile(new URL("../supabase/migrations/202607150006_cms_audit_and_bootstrap_rotation.sql", import.meta.url), "utf8");
   assert.match(config, /\[auth\.mfa\.totp\][\s\S]*?enroll_enabled = true[\s\S]*?verify_enabled = true/);
   assert.match(actions, /auth\.mfa\.enroll/);
   assert.match(actions, /auth\.mfa\.challengeAndVerify/);
@@ -207,9 +210,9 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   assert.match(hardening, /alter table public\.staff_invitations enable row level security/);
   assert.match(hardening, /alter table public\.staff_invitations force row level security/);
   assert.match(hardening, /create policy staff_invitations_owner_read/);
-  assert.match(hardening, /role public\.app_role not null/);
-  assert.match(hardening, /check \(role <> 'owner' or invited_by is null\)/);
-  assert.match(hardening, /bootstrap_first_owner_invitation/);
+  assert.match(hardening, /role public\.app_role not null check \(role <> 'owner'\)/);
+  assert.match(forward, /staff_invitations_owner_origin_check/);
+  assert.match(forward, /bootstrap_first_owner_invitation/);
   assert.match(hardening, /INVITATION_REQUIRED/);
   assert.match(hardening, /provision_invited_staff_after_signup/);
   assert.doesNotMatch(hardening, /invitation_email_is_eligible/);
@@ -218,6 +221,10 @@ test("MFA and invitation onboarding are complete and fail closed", async () => {
   for (const name of ["current_session_is_aal2", "can_mutate_cms_draft", "set_reusable_publication", "set_asset_publication", "provision_invited_staff", "protect_staff_invitation_update", "create_staff_invitation", "revoke_staff_invitation"]) {
     assert.match(hardening, new RegExp(`function public\\.${name}[\\s\\S]*?set search_path = ''`));
     assert.match(hardening, new RegExp(`revoke all on function public\\.${name}`));
+  }
+  for (const name of ["bootstrap_first_owner_invitation", "rotate_first_owner_invitation", "protect_cms_draft_attribution", "audit_cms_draft_dml"]) {
+    assert.match(forward, new RegExp(`function public\\.${name}[\\s\\S]*?set search_path = ''`));
+    assert.match(forward, new RegExp(`revoke all on function public\\.${name}`));
   }
   assert.match(hardening, /drop policy page_versions_publish on public\.page_versions/);
   assert.match(hardening, /not public\.has_any_role\(array\['owner','publisher'\]/);

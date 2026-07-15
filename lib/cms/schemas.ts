@@ -17,7 +17,10 @@ export const pageDraftInputSchema = z.object({
   metaDescription: z.string().trim().max(160).optional().default(""),
   canonicalPath: z.union([
     z.literal(""),
-    z.string().trim().max(180).regex(/^\/[a-z0-9/-]*$/, "Use a safe site path beginning with a forward slash"),
+    z.string().trim().max(180).regex(
+      /^\/(?:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*)?$/,
+      "Use a canonical site path without repeated or trailing slashes",
+    ),
   ]).optional().default(""),
   noIndex: z.coerce.boolean().default(false),
   visible: z.coerce.boolean().default(false),

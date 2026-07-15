@@ -4,8 +4,10 @@ import { pathToFileURL } from "node:url";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function parseBootstrapInput(args, environment) {
-  const email = String(args[0] ?? "").trim().toLowerCase();
-  const hours = args[1] === undefined ? 168 : Number(args[1]);
+  const mode = String(args[0] ?? "");
+  if (!["create", "rotate"].includes(mode)) throw new Error("Choose the explicit create or rotate mode.");
+  const email = String(args[1] ?? "").trim().toLowerCase();
+  const hours = args[2] === undefined ? 168 : Number(args[2]);
   if (!emailPattern.test(email) || email.length > 320) throw new Error("Enter a valid owner email address.");
   if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new Error("Expiry hours must be an integer from 1 to 720.");
 
@@ -24,7 +26,7 @@ export function parseBootstrapInput(args, environment) {
     throw new Error("SUPABASE_DB_URL must include the PostgreSQL host, user and database.");
   }
 
-  return { email, hours, databaseUrl };
+  return { mode, email, hours, databaseUrl };
 }
 
 export function buildPostgresEnvironment(databaseUrl, environment) {
@@ -42,7 +44,10 @@ export function buildPostgresEnvironment(databaseUrl, environment) {
 }
 
 export function runBootstrap(args = process.argv.slice(2), environment = process.env) {
-  const { email, hours, databaseUrl } = parseBootstrapInput(args, environment);
+  const { mode, email, hours, databaseUrl } = parseBootstrapInput(args, environment);
+  const databaseFunction = mode === "rotate"
+    ? "rotate_first_owner_invitation"
+    : "bootstrap_first_owner_invitation";
   const result = spawnSync(
     "psql",
     [
@@ -57,7 +62,7 @@ export function runBootstrap(args = process.argv.slice(2), environment = process
       "--tuples-only",
       "--no-align",
       "--command",
-      "select public.bootstrap_first_owner_invitation(:'bootstrap_email', now() + (:'expires_hours' || ' hours')::interval);",
+      `select public.${databaseFunction}(:'bootstrap_email', now() + (:'expires_hours' || ' hours')::interval);`,
     ],
     {
       encoding: "utf8",
@@ -67,10 +72,10 @@ export function runBootstrap(args = process.argv.slice(2), environment = process
   );
 
   if (result.error?.code === "ENOENT") throw new Error("psql is required to run the owner bootstrap.");
-  if (result.status !== 0) throw new Error("The database rejected the owner bootstrap request.");
+  if (result.status !== 0) throw new Error(`The database rejected the owner bootstrap ${mode} request.`);
   const invitationId = result.stdout.trim();
   if (!/^[0-9a-f-]{36}$/i.test(invitationId)) throw new Error("The database returned an unexpected bootstrap result.");
-  process.stdout.write(`First owner invitation created: ${invitationId}\n`);
+  process.stdout.write(`First owner invitation ${mode === "rotate" ? "rotated" : "created"}: ${invitationId}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
