@@ -69,6 +69,7 @@ test("the human readable licence note is independently complete for every stock 
 
   for (const asset of stockAssets) {
     assert.ok(note.includes(`Creator: ${String(asset.creator)}`));
+    assert.ok(note.includes(`Provider: ${String(asset.provider)}`));
     assert.ok(note.includes(`Asset identifier: \`${String(asset.assetIdentifier)}\``));
     assert.ok(note.includes(`Original source: ${String(asset.originalSourceUrl)}`));
     assert.ok(note.includes(`Download date: ${String(asset.downloadDate)}`));
