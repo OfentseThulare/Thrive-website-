@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PublicPage } from "@/components/public-page";
+import { BookingExperience } from "@/components/booking/booking-experience";
 import { getPageMetadata } from "@/lib/content/page-metadata";
 
 export function generateMetadata(): Promise<Metadata> {
@@ -7,5 +8,5 @@ export function generateMetadata(): Promise<Metadata> {
 }
 
 export default function BookPage() {
-  return <PublicPage slug="book" />;
+  return <><PublicPage slug="book" /><BookingExperience /></>;
 }

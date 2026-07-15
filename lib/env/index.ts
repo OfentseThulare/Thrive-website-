@@ -1,6 +1,8 @@
 import {
   parsePublicSupabaseEnvironment,
   parseSiteUrl,
+  parseBookingCalendarEnvironment,
+  parseBookingServerEnvironment,
   requireServerEnvironment,
 } from "./schema";
 
@@ -21,4 +23,12 @@ export function isSeedContentMode() {
 
 export function requireServerIntegration<const T extends readonly string[]>(names: T) {
   return requireServerEnvironment(names, process.env);
+}
+
+export function getBookingCalendarEnvironment() {
+  return parseBookingCalendarEnvironment(process.env);
+}
+
+export function getBookingServerEnvironment() {
+  return parseBookingServerEnvironment(process.env);
 }

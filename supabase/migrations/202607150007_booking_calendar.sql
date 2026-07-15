@@ -1,0 +1,216 @@
+begin;
+
+alter table public.services add column if not exists buffer_minutes integer not null default 0 check (buffer_minutes between 0 and 120);
+alter table public.bookings add column if not exists access_token_hash text, add column if not exists blocked_until timestamptz;
+update public.bookings set access_token_hash = encode(digest(id::text, 'sha256'), 'hex'), blocked_until = ends_at where access_token_hash is null or blocked_until is null;
+alter table public.bookings alter column access_token_hash set not null, alter column blocked_until set not null;
+alter table public.bookings add constraint bookings_access_token_hash_format check (access_token_hash ~ '^[a-f0-9]{64}$'), add constraint bookings_blocked_until_valid check (blocked_until >= ends_at);
+alter table public.bookings drop constraint if exists bookings_tstzrange_excl;
+alter table public.bookings add constraint bookings_active_time_exclusion exclude using gist (tstzrange(starts_at, blocked_until, '[)') with &&) where (state in ('HELD', 'PAYMENT_PENDING', 'PAID', 'CALENDAR_SYNC_PENDING', 'CONFIRMED'));
+create unique index bookings_access_token_hash_idx on public.bookings(access_token_hash);
+
+create table public.booking_rate_limits (
+  scope text not null check (scope in ('services', 'availability', 'hold', 'status', 'release')),
+  fingerprint_hash text not null check (fingerprint_hash ~ '^[a-f0-9]{64}$'),
+  window_started_at timestamptz not null default now(),
+  request_count integer not null default 1 check (request_count > 0),
+  primary key (scope, fingerprint_hash)
+);
+create index booking_rate_limits_window_idx on public.booking_rate_limits(window_started_at);
+alter table public.booking_rate_limits enable row level security;
+alter table public.booking_rate_limits force row level security;
+create policy booking_rate_limits_operator_read on public.booking_rate_limits for select to authenticated
+using (public.has_any_role(array['owner', 'auditor']::public.app_role[]));
+
+create function public.check_booking_rate_limit(p_scope text, p_fingerprint_hash text) returns boolean
+language plpgsql security definer set search_path = '' as $$
+declare window_size interval; declare maximum_requests integer; declare current_count integer;
+begin
+  if p_fingerprint_hash !~ '^[a-f0-9]{64}$' then raise exception 'BOOKING_RATE_LIMIT_INVALID'; end if;
+  case p_scope
+    when 'hold' then window_size := interval '15 minutes'; maximum_requests := 8;
+    when 'release' then window_size := interval '15 minutes'; maximum_requests := 8;
+    when 'services' then window_size := interval '10 minutes'; maximum_requests := 40;
+    when 'availability' then window_size := interval '10 minutes'; maximum_requests := 60;
+    when 'status' then window_size := interval '10 minutes'; maximum_requests := 60;
+    else raise exception 'BOOKING_RATE_LIMIT_INVALID';
+  end case;
+  perform pg_advisory_xact_lock(hashtextextended(p_scope || ':' || p_fingerprint_hash, 0));
+  delete from public.booking_rate_limits where window_started_at < now() - interval '1 day';
+  insert into public.booking_rate_limits(scope, fingerprint_hash, window_started_at, request_count)
+  values (p_scope, p_fingerprint_hash, now(), 1)
+  on conflict (scope, fingerprint_hash) do update set
+    window_started_at = case when booking_rate_limits.window_started_at <= now() - window_size then now() else booking_rate_limits.window_started_at end,
+    request_count = case when booking_rate_limits.window_started_at <= now() - window_size then 1 else booking_rate_limits.request_count + 1 end
+  returning request_count into current_count;
+  return current_count <= maximum_requests;
+end; $$;
+revoke all on function public.check_booking_rate_limit(text, text) from public, anon, authenticated;
+grant execute on function public.check_booking_rate_limit(text, text) to service_role;
+
+create function public.prevent_booking_event_mutation() returns trigger language plpgsql set search_path = '' as $$
+begin raise exception 'Booking events are append only'; end; $$;
+create trigger booking_events_immutable before update or delete on public.booking_events for each row execute function public.prevent_booking_event_mutation();
+
+create function public.enforce_booking_state_transition() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.state = old.state then return new; end if;
+  if not (
+    (old.state = 'HELD' and new.state in ('PAYMENT_PENDING', 'EXPIRED', 'CANCELLED')) or
+    (old.state = 'PAYMENT_PENDING' and new.state in ('PAID', 'EXPIRED', 'CANCELLED')) or
+    (old.state = 'PAID' and new.state in ('CALENDAR_SYNC_PENDING', 'CANCELLED')) or
+    (old.state = 'CALENDAR_SYNC_PENDING' and new.state in ('CONFIRMED', 'CALENDAR_FAILED', 'CANCELLED')) or
+    (old.state = 'CALENDAR_FAILED' and new.state in ('CALENDAR_SYNC_PENDING', 'CANCELLED')) or
+    (old.state = 'CONFIRMED' and new.state in ('COMPLETED', 'CANCELLED', 'NO_SHOW'))
+  ) then raise exception 'BOOKING_STATE_TRANSITION_INVALID'; end if;
+  return new;
+end; $$;
+create trigger bookings_validate_state_transition before update of state on public.bookings for each row execute function public.enforce_booking_state_transition();
+
+create function public.expire_stale_booking_holds() returns integer language plpgsql security definer set search_path = '' as $$
+declare changed integer;
+begin
+  with candidates as materialized (
+    select id, state from public.bookings
+    where state in ('HELD', 'PAYMENT_PENDING') and hold_expires_at <= now()
+    for update
+  ), expired as (
+    update public.bookings b set state = 'EXPIRED', updated_at = now()
+    from candidates c where b.id = c.id
+    returning b.id, c.state as from_state
+  ), events as (
+    insert into public.booking_events(booking_id, event_type, from_state, to_state, metadata)
+    select id, 'hold.expired', from_state, 'EXPIRED', '{}'::jsonb from expired
+  ) select count(*) into changed from expired;
+  return changed;
+end; $$;
+revoke all on function public.expire_stale_booking_holds() from public, anon, authenticated;
+
+create function public.list_booking_slots(p_service_id uuid, p_from date, p_to date)
+returns table(starts_at timestamptz, ends_at timestamptz, blocked_until timestamptz)
+language plpgsql security definer set search_path = '' as $$
+declare service_duration integer; declare service_buffer integer;
+declare local_today date := (now() at time zone 'Africa/Johannesburg')::date;
+begin
+  perform public.expire_stale_booking_holds();
+  if p_from < local_today + 1 or p_to < p_from or p_to > local_today + 90 then raise exception 'BOOKING_DATE_RANGE_INVALID'; end if;
+  select duration_minutes, buffer_minutes into service_duration, service_buffer from public.services where id = p_service_id and active and currency = 'ZAR';
+  if service_duration is null then raise exception 'BOOKING_SERVICE_UNAVAILABLE'; end if;
+  return query
+  with rule_windows as (
+    select d::date local_date, r.starts_at, r.ends_at from public.availability_rules r
+    cross join lateral generate_series(p_from, p_to, interval '1 day') d
+    where r.active and (r.service_id is null or r.service_id = p_service_id)
+      and extract(dow from d)::smallint = r.weekday and d::date >= r.effective_from
+      and (r.effective_until is null or d::date <= r.effective_until)
+  ), rule_candidates as (
+    select generated local_start from rule_windows w cross join lateral generate_series(
+      w.local_date + w.starts_at, w.local_date + w.ends_at - make_interval(mins => service_duration), interval '30 minutes') generated
+  ), opening_candidates as (
+    select generated local_start from public.availability_exceptions e cross join lateral generate_series(
+      e.starts_at at time zone 'Africa/Johannesburg', (e.ends_at at time zone 'Africa/Johannesburg') - make_interval(mins => service_duration), interval '30 minutes') generated
+    where e.available and (e.service_id is null or e.service_id = p_service_id)
+      and (e.starts_at at time zone 'Africa/Johannesburg')::date between p_from and p_to
+  ), candidates as (
+    select distinct local_start from (select local_start from rule_candidates union all select local_start from opening_candidates) all_candidates
+  ), utc_candidates as (
+    select local_start at time zone 'Africa/Johannesburg' starts_at,
+      (local_start + make_interval(mins => service_duration)) at time zone 'Africa/Johannesburg' ends_at,
+      (local_start + make_interval(mins => service_duration + service_buffer)) at time zone 'Africa/Johannesburg' blocked_until from candidates
+  )
+  select c.starts_at, c.ends_at, c.blocked_until from utc_candidates c where c.starts_at > now()
+    and not exists (select 1 from public.availability_exceptions e where not e.available and (e.service_id is null or e.service_id = p_service_id) and tstzrange(e.starts_at, e.ends_at, '[)') && tstzrange(c.starts_at, c.blocked_until, '[)'))
+    and not exists (select 1 from public.bookings b where b.state in ('HELD', 'PAYMENT_PENDING', 'PAID', 'CALENDAR_SYNC_PENDING', 'CONFIRMED') and tstzrange(b.starts_at, b.blocked_until, '[)') && tstzrange(c.starts_at, c.blocked_until, '[)'))
+  order by c.starts_at;
+end; $$;
+revoke all on function public.list_booking_slots(uuid, date, date) from public;
+grant execute on function public.list_booking_slots(uuid, date, date) to anon, authenticated;
+
+create function public.create_booking_hold(
+  p_service_id uuid, p_starts_at timestamptz, p_client_name text, p_client_email text, p_client_telephone text,
+  p_consent_version_id uuid, p_public_reference text, p_idempotency_key uuid, p_access_token_hash text
+) returns table(public_reference text, hold_expires_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+declare service_record record; declare consent_id uuid; declare new_booking_id uuid; declare existing_record record;
+declare hold_minutes integer := 15; declare local_date date;
+begin
+  if p_client_name !~ '\S' or char_length(trim(p_client_name)) not between 2 and 160 or p_client_email !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' or char_length(p_client_email) > 320
+    or (coalesce(p_client_telephone, '') <> '' and (char_length(p_client_telephone) > 40 or p_client_telephone !~ '^[+()0-9 .]*$'))
+    or p_public_reference !~ '^TTC-[A-Z0-9]{12}$' or p_access_token_hash !~ '^[a-f0-9]{64}$'
+  then raise exception 'BOOKING_REQUEST_INVALID'; end if;
+  perform pg_advisory_xact_lock(hashtext('thrive-single-practitioner-booking'));
+  perform public.expire_stale_booking_holds();
+  select b.public_reference, b.hold_expires_at into existing_record from public.bookings b where b.idempotency_key = p_idempotency_key and b.access_token_hash = p_access_token_hash;
+  if found then return query select existing_record.public_reference, existing_record.hold_expires_at; return; end if;
+  select * into service_record from public.services where id = p_service_id and active and currency = 'ZAR';
+  if not found then raise exception 'BOOKING_SERVICE_UNAVAILABLE'; end if;
+  select id into consent_id from public.consent_versions where id = p_consent_version_id and purpose = 'booking' and active and effective_at <= now() and (retired_at is null or retired_at > now());
+  if consent_id is null then raise exception 'BOOKING_CONSENT_UNAVAILABLE'; end if;
+  local_date := (p_starts_at at time zone 'Africa/Johannesburg')::date;
+  if not exists (select 1 from public.list_booking_slots(p_service_id, local_date, local_date) s where s.starts_at = p_starts_at and s.ends_at = p_starts_at + make_interval(mins => service_record.duration_minutes))
+  then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end if;
+  select coalesce((value ->> 'minutes')::integer, 15) into hold_minutes from public.site_settings where key = 'booking.hold_duration';
+  hold_minutes := greatest(5, least(coalesce(hold_minutes, 15), 30));
+  begin
+    insert into public.bookings(public_reference, service_id, starts_at, ends_at, blocked_until, state, hold_expires_at, client_name, client_email, client_telephone, idempotency_key, access_token_hash)
+    values (p_public_reference, p_service_id, p_starts_at, p_starts_at + make_interval(mins => service_record.duration_minutes), p_starts_at + make_interval(mins => service_record.duration_minutes + service_record.buffer_minutes), 'HELD', now() + make_interval(mins => hold_minutes), trim(p_client_name), lower(trim(p_client_email)), nullif(trim(p_client_telephone), ''), p_idempotency_key, p_access_token_hash)
+    returning id, bookings.hold_expires_at into new_booking_id, hold_expires_at;
+  exception when exclusion_violation or unique_violation then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end;
+  insert into public.booking_consents values (new_booking_id, consent_id, now());
+  insert into public.booking_events(booking_id, event_type, to_state, metadata) values (new_booking_id, 'hold.created', 'HELD', jsonb_build_object('consent_version_id', consent_id));
+  public_reference := p_public_reference; return next;
+end; $$;
+revoke all on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) from public, anon, authenticated;
+grant execute on function public.create_booking_hold(uuid, timestamptz, text, text, text, uuid, text, uuid, text) to service_role;
+
+create function public.resume_booking_hold(p_access_token_hash text, p_idempotency_key uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.expire_stale_booking_holds();
+  if p_access_token_hash !~ '^[a-f0-9]{64}$' then return false; end if;
+  return exists (
+    select 1 from public.bookings where access_token_hash = p_access_token_hash
+      and idempotency_key = p_idempotency_key
+      and state in ('HELD', 'PAYMENT_PENDING') and hold_expires_at > now()
+  );
+end; $$;
+revoke all on function public.resume_booking_hold(text, uuid) from public, anon, authenticated;
+grant execute on function public.resume_booking_hold(text, uuid) to service_role;
+
+create function public.get_booking_status(p_access_token_hash text)
+returns table(public_reference text, service_name text, starts_at timestamptz, ends_at timestamptz, state public.booking_state, hold_expires_at timestamptz, price_cents integer, currency char(3))
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.expire_stale_booking_holds(); if p_access_token_hash !~ '^[a-f0-9]{64}$' then return; end if;
+  return query select b.public_reference, s.name, b.starts_at, b.ends_at, b.state, b.hold_expires_at, s.price_cents, s.currency from public.bookings b join public.services s on s.id = b.service_id where b.access_token_hash = p_access_token_hash;
+end; $$;
+revoke all on function public.get_booking_status(text) from public, anon, authenticated; grant execute on function public.get_booking_status(text) to service_role;
+
+create function public.release_booking_hold(p_access_token_hash text) returns boolean language plpgsql security definer set search_path = '' as $$
+declare v_booking_id uuid; declare old_state public.booking_state;
+begin
+  perform pg_advisory_xact_lock(hashtext('thrive-single-practitioner-booking')); perform public.expire_stale_booking_holds();
+  select id, state into v_booking_id, old_state from public.bookings where access_token_hash = p_access_token_hash and state in ('HELD', 'PAYMENT_PENDING') for update;
+  if not found then return false; end if;
+  update public.bookings set state = 'CANCELLED', updated_at = now() where id = v_booking_id;
+  insert into public.booking_events(booking_id, event_type, from_state, to_state, metadata) values (v_booking_id, 'hold.released', old_state, 'CANCELLED', '{}'::jsonb); return true;
+end; $$;
+revoke all on function public.release_booking_hold(text) from public, anon, authenticated; grant execute on function public.release_booking_hold(text) to service_role;
+
+create function public.transition_booking_state(p_booking_id uuid, p_to_state public.booking_state) returns boolean language plpgsql security definer set search_path = '' as $$
+declare old_state public.booking_state;
+begin
+  if not public.has_any_role(array['owner', 'scheduler']::public.app_role[]) then raise exception 'BOOKING_NOT_AUTHORISED'; end if;
+  select state into old_state from public.bookings where id = p_booking_id for update; if old_state is null then return false; end if;
+  update public.bookings set state = p_to_state where id = p_booking_id;
+  insert into public.booking_events(booking_id, event_type, from_state, to_state, metadata, actor_id) values (p_booking_id, 'state.changed', old_state, p_to_state, '{}'::jsonb, auth.uid()); return true;
+end; $$;
+revoke all on function public.transition_booking_state(uuid, public.booking_state) from public; grant execute on function public.transition_booking_state(uuid, public.booking_state) to authenticated;
+
+drop policy if exists consent_versions_admin_manage on public.consent_versions;
+create policy consent_versions_scheduler_manage on public.consent_versions for all to authenticated using (public.has_any_role(array['owner', 'scheduler']::public.app_role[])) with check (public.has_any_role(array['owner', 'scheduler']::public.app_role[]));
+
+drop policy if exists bookings_scheduler_write on public.bookings;
+drop policy if exists booking_events_staff_append on public.booking_events;
+
+commit;

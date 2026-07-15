@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   parsePublicSupabaseEnvironment,
+  parseBookingServerEnvironment,
   parseSiteUrl,
   requireServerEnvironment,
 } from "../lib/env/schema.ts";
@@ -69,6 +70,25 @@ test("server integrations fail closed and do not disclose values", () => {
     }),
     { PAYFAST_MERCHANT_ID: "10000100" },
   );
+});
+
+test("booking server environment is complete, private and fail closed", () => {
+  assert.throws(() => parseBookingServerEnvironment({}), /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.throws(() => parseBookingServerEnvironment({
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "a-valid-looking-service-role-key",
+    BOOKING_RATE_LIMIT_SECRET: "too-short",
+  }), /at least 32 characters/);
+  assert.deepEqual(parseBookingServerEnvironment({
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "a-valid-looking-service-role-key",
+    BOOKING_RATE_LIMIT_SECRET: "a-private-rate-limit-secret-with-32-chars",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "not-returned",
+  }), {
+    url: "https://example.supabase.co",
+    serviceRoleKey: "a-valid-looking-service-role-key",
+    rateLimitSecret: "a-private-rate-limit-secret-with-32-chars",
+  });
 });
 
 test("site URL rejects plaintext remote origins", () => {

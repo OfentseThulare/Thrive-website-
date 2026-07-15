@@ -14,7 +14,31 @@ const runtimeEnvironmentSchema = z.enum(["development", "test", "production"]);
 
 export type PublicSupabaseEnvironment = z.infer<typeof publicSupabaseSchema>;
 
+const bookingServerSchema = z.object({
+  url: z.string().trim().url().refine(
+    (value) => value.startsWith("https://") || value.startsWith("http://localhost"),
+    "Supabase URL must use HTTPS outside local development",
+  ),
+  serviceRoleKey: z.string().trim().min(20, "Supabase service role key is too short"),
+  rateLimitSecret: z.string().trim().min(32, "Booking rate limit secret must contain at least 32 characters"),
+});
+
+export type BookingServerEnvironment = z.infer<typeof bookingServerSchema>;
+
 type EnvironmentSource = Record<string, string | undefined>;
+
+const bookingCalendarModeSchema = z.enum(["disabled", "google", "mock"]);
+
+export type BookingCalendarEnvironment =
+  | { mode: "disabled" }
+  | { mode: "mock" }
+  | {
+      mode: "google";
+      calendarId: string;
+      clientId: string;
+      clientSecret: string;
+      refreshToken: string;
+    };
 
 export function parsePublicSupabaseEnvironment(
   source: EnvironmentSource,
@@ -33,6 +57,18 @@ export function parsePublicSupabaseEnvironment(
   }
 
   return publicSupabaseSchema.parse({ url, anonKey });
+}
+
+export function parseBookingServerEnvironment(source: EnvironmentSource): BookingServerEnvironment {
+  const values = requireServerEnvironment(
+    ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BOOKING_RATE_LIMIT_SECRET"] as const,
+    source,
+  );
+  return bookingServerSchema.parse({
+    url: values.NEXT_PUBLIC_SUPABASE_URL,
+    serviceRoleKey: values.SUPABASE_SERVICE_ROLE_KEY,
+    rateLimitSecret: values.BOOKING_RATE_LIMIT_SECRET,
+  });
 }
 
 export function parseSiteUrl(
@@ -82,5 +118,42 @@ export function requireServerEnvironment<const T extends readonly string[]>(
 
   return Object.fromEntries(names.map((name) => [name, source[name]!.trim()])) as {
     [K in T[number]]: string;
+  };
+}
+
+export function parseBookingCalendarEnvironment(
+  source: EnvironmentSource,
+  runtimeOverride?: "development" | "test" | "production",
+): BookingCalendarEnvironment {
+  const runtime = runtimeEnvironmentSchema.parse(
+    runtimeOverride ?? source.NODE_ENV ?? "development",
+  );
+  const mode = bookingCalendarModeSchema.parse(
+    source.BOOKING_CALENDAR_MODE?.trim() || "disabled",
+  );
+
+  if (mode === "disabled") return { mode };
+  if (mode === "mock") {
+    if (runtime === "production") {
+      throw new Error("The mock booking calendar is forbidden in production.");
+    }
+    return { mode };
+  }
+
+  const values = requireServerEnvironment(
+    [
+      "GOOGLE_CALENDAR_ID",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "GOOGLE_REFRESH_TOKEN",
+    ] as const,
+    source,
+  );
+  return {
+    mode,
+    calendarId: values.GOOGLE_CALENDAR_ID,
+    clientId: values.GOOGLE_CLIENT_ID,
+    clientSecret: values.GOOGLE_CLIENT_SECRET,
+    refreshToken: values.GOOGLE_REFRESH_TOKEN,
   };
 }
