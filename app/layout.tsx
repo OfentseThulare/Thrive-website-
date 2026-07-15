@@ -1,10 +1,31 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
+
+const sans = localFont({
+  src: [
+    { path: "./fonts/AlegreyaSans-Regular.ttf", weight: "400", style: "normal" },
+    { path: "./fonts/AlegreyaSans-Medium.ttf", weight: "500", style: "normal" },
+    { path: "./fonts/AlegreyaSans-Bold.ttf", weight: "700", style: "normal" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+  fallback: ["Arial", "sans-serif"],
+});
+
+const serif = localFont({
+  src: "./fonts/CormorantGaramond-Variable.ttf",
+  weight: "300 700",
+  style: "normal",
+  variable: "--font-serif",
+  display: "swap",
+  fallback: ["Georgia", "serif"],
+});
 
 export const metadata: Metadata = {
   metadataBase: getSiteUrl(),
@@ -32,7 +53,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-ZA">
+    <html lang="en-ZA" className={`${sans.variable} ${serif.variable}`}>
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content

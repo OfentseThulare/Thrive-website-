@@ -13,8 +13,8 @@
   --colour-white: #fffefa;
   --colour-line: rgb(7 61 61 / 16%);
   --shadow-card: 0 28px 70px rgb(20 55 52 / 13%);
-  --font-body: ui-sans-serif, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
-  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-body: var(--font-sans, "Alegreya Sans"), "Trebuchet MS", sans-serif;
+  --font-display: var(--font-serif, "Cormorant Garamond"), Georgia, serif;
   --size-shell: min(1180px, calc(100% - 48px));
   --size-reading: 740px;
   --size-header: 84px;
