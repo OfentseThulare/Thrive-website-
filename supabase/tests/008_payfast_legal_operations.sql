@@ -1,5 +1,5 @@
 begin;
-select plan(32);
+select plan(69);
 select has_function('public', 'create_payfast_payment_attempt', array['text','text','uuid','text','boolean','boolean']);
 select has_function('public', 'process_payfast_itn', array['text','text','integer','text']);
 select has_function('public', 'finalise_paid_booking_calendar', array['uuid','boolean','text','text']);
@@ -38,6 +38,7 @@ insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_c
 values ('85000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000000','authenticated','authenticated','finance-aal@example.test','',now(),'{"provider":"email","providers":["email"]}','{}',now(),now());
 insert into public.profiles(id,display_name) values ('85000000-0000-0000-0000-000000000001','Finance AAL test');
 insert into public.user_roles(user_id,role) values ('85000000-0000-0000-0000-000000000001','finance');
+insert into public.user_roles(user_id,role) values ('85000000-0000-0000-0000-000000000001','owner');
 insert into public.services(id,slug,name,description,duration_minutes,buffer_minutes,price_cents,currency,active,position)
 values ('85000000-0000-0000-0000-000000000002','finance-aal-service','Finance AAL service','Test-only finance service.',60,0,70000,'ZAR',false,99);
 insert into public.bookings(id,public_reference,service_id,starts_at,ends_at,blocked_until,state,client_name,client_email,idempotency_key,access_token_hash,price_cents,currency)
@@ -63,6 +64,109 @@ select lives_ok(
   'the refund RPC admits finance at AAL2'
 );
 select is((select state::text from public.payments where id = '85000000-0000-0000-0000-000000000005'), 'REFUND_PENDING', 'the constrained AAL2 mutation is durable');
+reset role;
+
+insert into public.bookings(id,public_reference,service_id,starts_at,ends_at,blocked_until,state,hold_expires_at,client_name,client_email,idempotency_key,access_token_hash,price_cents,currency) values
+('85000000-0000-0000-0000-000000000010','TTC-ITNNORMAL','85000000-0000-0000-0000-000000000002','2035-01-10 10:00+02','2035-01-10 11:00+02','2035-01-10 11:00+02','PAYMENT_PENDING','2035-01-10 09:30+02','ITN Normal','normal@example.test','85000000-0000-0000-0000-000000000020',repeat('a',64),70000,'ZAR'),
+('85000000-0000-0000-0000-000000000012','TTC-ITNREUSE','85000000-0000-0000-0000-000000000002','2035-01-10 12:00+02','2035-01-10 13:00+02','2035-01-10 13:00+02','PAYMENT_PENDING','2035-01-10 11:30+02','ITN Reuse','reuse@example.test','85000000-0000-0000-0000-000000000021',repeat('b',64),70000,'ZAR'),
+('85000000-0000-0000-0000-000000000014','TTC-ITNEXPIRED','85000000-0000-0000-0000-000000000002','2035-01-10 14:00+02','2035-01-10 15:00+02','2035-01-10 15:00+02','EXPIRED','2035-01-10 13:30+02','ITN Expired','expired@example.test','85000000-0000-0000-0000-000000000022',repeat('c',64),70000,'ZAR'),
+('85000000-0000-0000-0000-000000000016','TTC-ITNCANCEL','85000000-0000-0000-0000-000000000002','2035-01-10 16:00+02','2035-01-10 17:00+02','2035-01-10 17:00+02','CANCELLED','2035-01-10 15:30+02','ITN Cancelled','cancelled@example.test','85000000-0000-0000-0000-000000000023',repeat('d',64),70000,'ZAR');
+insert into public.bookings(id,public_reference,service_id,starts_at,ends_at,blocked_until,state,hold_expires_at,client_name,client_email,idempotency_key,access_token_hash,price_cents,currency)
+values ('85000000-0000-0000-0000-000000000018','TTC-LEGALREUSE','85000000-0000-0000-0000-000000000002','2035-01-10 18:00+02','2035-01-10 19:00+02','2035-01-10 19:00+02','HELD','2035-01-10 17:30+02','Legal Reuse','legal.reuse@example.test','85000000-0000-0000-0000-000000000024',repeat('e',64),70000,'ZAR');
+insert into public.payments(id,booking_id,provider,provider_reference,amount_cents,currency,state,idempotency_key) values
+('85000000-0000-0000-0000-000000000011','85000000-0000-0000-0000-000000000010','payfast','TTC-PF-BBBBBBBBBBBBBBBBBBBBBBBB',70000,'ZAR','PENDING','85000000-0000-0000-0000-000000000030'),
+('85000000-0000-0000-0000-000000000013','85000000-0000-0000-0000-000000000012','payfast','TTC-PF-CCCCCCCCCCCCCCCCCCCCCCCC',70000,'ZAR','PENDING','85000000-0000-0000-0000-000000000031'),
+('85000000-0000-0000-0000-000000000015','85000000-0000-0000-0000-000000000014','payfast','TTC-PF-DDDDDDDDDDDDDDDDDDDDDDDD',70000,'ZAR','PENDING','85000000-0000-0000-0000-000000000032'),
+('85000000-0000-0000-0000-000000000017','85000000-0000-0000-0000-000000000016','payfast','TTC-PF-EEEEEEEEEEEEEEEEEEEEEEEE',70000,'ZAR','PENDING','85000000-0000-0000-0000-000000000033');
+
+set local role service_role;
+select lives_ok(
+  $$select * from public.create_payfast_payment_attempt(repeat('e',64),'TTC-PF-FFFFFFFFFFFFFFFFFFFFFFFF','85000000-0000-0000-0000-000000000034','15/07/2026-client-v1',true,false)$$,
+  'the first legal version is accepted with payment attempt creation'
+);
+select lives_ok(
+  $$select * from public.create_payfast_payment_attempt(repeat('e',64),'TTC-PF-1234567890ABCDEF12345678','85000000-0000-0000-0000-000000000035','16/07/2026-client-v2',true,false)$$,
+  'a materially different legal version is accepted on the reused open attempt'
+);
+select is((select count(*)::integer from public.payment_events where payment_id = (select id from public.payments where booking_id = '85000000-0000-0000-0000-000000000018') and metadata ->> 'legal_version' = '15/07/2026-client-v1'), 1, 'the original legal acceptance remains immutable');
+select is((select count(*)::integer from public.payment_events where payment_id = (select id from public.payments where booking_id = '85000000-0000-0000-0000-000000000018') and metadata ->> 'legal_version' = '16/07/2026-client-v2'), 1, 'the new legal version has its own immutable acceptance event');
+select lives_ok(
+  $$select * from public.create_payfast_payment_attempt(repeat('e',64),'TTC-PF-ABCDEFABCDEFABCDEFABCDEF','85000000-0000-0000-0000-000000000036','16/07/2026-client-v2',true,false)$$,
+  'repeating the same legal version remains idempotent'
+);
+select is((select count(*)::integer from public.payment_events where payment_id = (select id from public.payments where booking_id = '85000000-0000-0000-0000-000000000018') and metadata ->> 'legal_version' = '16/07/2026-client-v2'), 1, 'repeated acceptance does not duplicate the immutable event');
+
+select lives_ok(
+  $$select * from public.process_payfast_itn('TTC-PF-BBBBBBBBBBBBBBBBBBBBBBBB','PF-FIRST-COMPLETE',70000,repeat('1',64))$$,
+  'the first valid COMPLETE ITN is processed'
+);
+select is((select state::text from public.payments where id = '85000000-0000-0000-0000-000000000011'), 'PAID', 'first COMPLETE marks payment paid');
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000010'), 'CALENDAR_SYNC_PENDING', 'first COMPLETE queues calendar sync');
+select is((select duplicate from public.process_payfast_itn('TTC-PF-BBBBBBBBBBBBBBBBBBBBBBBB','PF-FIRST-COMPLETE',70000,repeat('1',64))), true, 'the same valid ITN is idempotent');
+select is((select count(*)::integer from public.payment_events where provider_event_id = 'PF-FIRST-COMPLETE'), 1, 'duplicate ITN creates one provider event');
+select throws_ok(
+  $$select * from public.process_payfast_itn('TTC-PF-CCCCCCCCCCCCCCCCCCCCCCCC','PF-FIRST-COMPLETE',70000,repeat('2',64))$$,
+  'P0001', 'PAYFAST_PROVIDER_EVENT_REUSED', 'a provider event cannot be reused across payments'
+);
+
+select lives_ok(
+  $$select * from public.process_payfast_itn('TTC-PF-DDDDDDDDDDDDDDDDDDDDDDDD','PF-LATE-EXPIRED',70000,repeat('3',64))$$,
+  'a valid late payment for an expired booking is durably recorded'
+);
+select is((select state::text from public.payments where id = '85000000-0000-0000-0000-000000000015'), 'PAID', 'expired late payment remains paid');
+select ok((select reconciliation_required from public.payments where id = '85000000-0000-0000-0000-000000000015'), 'expired late payment requires reconciliation');
+select is((select reconciliation_reason from public.payments where id = '85000000-0000-0000-0000-000000000015'), 'booking_expired', 'expired late payment records its reason');
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000014'), 'EXPIRED', 'late payment does not falsely confirm an expired booking');
+select is((select count(*)::integer from public.calendar_sync_events where booking_id = '85000000-0000-0000-0000-000000000014'), 0, 'expired late payment creates no calendar queue');
+
+select lives_ok(
+  $$select * from public.process_payfast_itn('TTC-PF-EEEEEEEEEEEEEEEEEEEEEEEE','PF-LATE-CANCELLED',70000,repeat('4',64))$$,
+  'a valid late payment for a cancelled booking is durably recorded'
+);
+select is((select state::text from public.payments where id = '85000000-0000-0000-0000-000000000017'), 'PAID', 'cancelled late payment remains paid');
+select ok((select reconciliation_required from public.payments where id = '85000000-0000-0000-0000-000000000017'), 'cancelled late payment requires reconciliation');
+select is((select reconciliation_reason from public.payments where id = '85000000-0000-0000-0000-000000000017'), 'booking_cancelled', 'cancelled late payment records its reason');
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000016'), 'CANCELLED', 'late payment does not falsely confirm a cancelled booking');
+select is((select count(*)::integer from public.calendar_sync_events where booking_id = '85000000-0000-0000-0000-000000000016'), 0, 'cancelled late payment creates no calendar queue');
+
+reset role;
+select set_config('request.jwt.claims', '{"sub":"85000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal2"}', true);
+set local role authenticated;
+select lives_ok($$select public.mark_payment_refund_state('85000000-0000-0000-0000-000000000017','REFUND_PENDING')$$, 'AAL2 finance can open the verified refund workflow');
+select lives_ok($$select public.mark_payment_refund_state('85000000-0000-0000-0000-000000000017','REFUNDED')$$, 'AAL2 finance can record the completed refund');
+select ok(not (select reconciliation_required from public.payments where id = '85000000-0000-0000-0000-000000000017'), 'completed refund resolves the reconciliation flag');
+select ok((select reconciled_at is not null from public.payments where id = '85000000-0000-0000-0000-000000000017'), 'completed refund records reconciliation time');
+reset role;
+
+set local role service_role;
+select lives_ok(
+  $$select public.finalise_paid_booking_calendar('85000000-0000-0000-0000-000000000010',false,null,'TEST_FAILURE')$$,
+  'calendar failure is finalised durably'
+);
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000010'), 'CALENDAR_FAILED', 'calendar failure is visible on the booking');
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"85000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal2"}', true);
+set local role authenticated;
+select lives_ok(
+  $$select public.retry_failed_calendar_sync('85000000-0000-0000-0000-000000000010')$$,
+  'an AAL2 owner can queue a failed calendar retry'
+);
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000010'), 'CALENDAR_SYNC_PENDING', 'calendar retry restores the pending state');
+reset role;
+
+set local role service_role;
+select lives_ok(
+  $$select public.finalise_paid_booking_calendar('85000000-0000-0000-0000-000000000010',true,'google-event-test',null)$$,
+  'calendar success confirms the retried booking'
+);
+select is((select state::text from public.bookings where id = '85000000-0000-0000-0000-000000000010'), 'CONFIRMED', 'successful retry confirms the booking');
+select is((select count(*)::integer from public.notification_outbox where booking_id = '85000000-0000-0000-0000-000000000010' and kind = 'booking_confirmation'), 1, 'confirmation creates one outbox record');
+select lives_ok(
+  $$select public.finalise_paid_booking_calendar('85000000-0000-0000-0000-000000000010',true,'google-event-test',null)$$,
+  'repeating calendar finalisation is idempotent'
+);
+select is((select count(*)::integer from public.notification_outbox where booking_id = '85000000-0000-0000-0000-000000000010' and kind = 'booking_confirmation'), 1, 'idempotent finalisation keeps exactly one outbox record');
 reset role;
 select * from finish();
 rollback;

@@ -2715,6 +2715,9 @@ figure {
 .booking-primary-button:hover, .booking-primary-link:hover { background: #9f4936; }
 .payment-unavailable { display: grid; gap: 4px; padding: 17px 19px; border-left: 4px solid #c69e3b; color: #664f17; background: #fff6d9; }
 .payment-unavailable span { font-size: .88rem; }
+.payment-reconciliation-alert { display: grid; gap: 5px; margin: 22px 0; padding: 18px 20px; border: 1px solid #d19334; border-left-width: 5px; border-radius: 8px; color: #5b400d; background: #fff3ce; }
+.payment-admin-alert { border-color: #d19334; border-left: 6px solid #d19334; background: #fff8e6; }
+.admin-reconciliation-flag { display: block; margin-top: 4px; color: #8b4d09; font-size: .72rem; text-transform: uppercase; }
 .payment-acceptance { display: flex; align-items: flex-start; gap: 11px; margin: 15px 0; padding: 14px; border: 1px solid var(--colour-line); border-radius: 8px; background: #fff; color: var(--colour-ink); font-size: .86rem; cursor: pointer; }
 .payment-acceptance input { width: 19px; height: 19px; flex: 0 0 auto; accent-color: var(--colour-teal-900); }
 .payment-legal { margin-top: 16px; font-size: .8rem; }

@@ -25,14 +25,17 @@ test("mock calendar is deterministic and event creation is idempotent", async ()
 
 test("Google adapter refreshes a token and normalises FreeBusy without retaining payloads", async () => {
   const calls: string[] = [];
-  const fakeFetch = async (input: string | URL | Request) => {
+  const signals: Array<AbortSignal | null | undefined> = [];
+  const fakeFetch = async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input); calls.push(url);
+    signals.push(init?.signal);
     if (url.includes("oauth2")) return Response.json({ access_token: "test-token" });
     return Response.json({ calendars: { "calendar@example.test": { busy: [{ start: "2026-07-20T08:00:00Z", end: "2026-07-20T09:00:00Z" }] } } });
   };
   const adapter = new GoogleCalendarAdapter({ calendarId: "calendar@example.test", clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fakeFetch as typeof fetch);
   assert.deepEqual(await adapter.freeBusy("2026-07-20T00:00:00Z", "2026-07-21T00:00:00Z"), [{ startsAt: "2026-07-20T08:00:00Z", endsAt: "2026-07-20T09:00:00Z" }]);
   assert.equal(calls.length, 2);
+  assert.equal(signals.every((signal) => signal instanceof AbortSignal), true);
 });
 
 test("Google event creation recovers a lost response through a deterministic provider ID", async () => {
@@ -51,7 +54,7 @@ test("Google event creation recovers a lost response through a deterministic pro
     return Response.json({ id: googleCalendarEventId(input.operationId), status: "confirmed" });
   };
   const adapter = new GoogleCalendarAdapter({ calendarId: "calendar@example.test", clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fakeFetch as typeof fetch);
-  await assert.rejects(adapter.createEvent(input), /response lost/);
+  await assert.rejects(adapter.createEvent(input), BookingCalendarUnavailableError);
   assert.deepEqual(await adapter.createEvent(input), { externalEventId: googleCalendarEventId(input.operationId), status: "confirmed" });
   assert.deepEqual(eventIds, [googleCalendarEventId(input.operationId), googleCalendarEventId(input.operationId)]);
   assert.match(eventIds[0], /^[a-v0-9]{5,1024}$/);
@@ -70,4 +73,17 @@ test("Google cancellation treats a repeated provider 404 as success", async () =
   const adapter = new GoogleCalendarAdapter({ calendarId: "calendar@example.test", clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fakeFetch as typeof fetch);
   assert.deepEqual(await adapter.cancelEvent("event-1"), { externalEventId: "event-1", status: "cancelled" });
   assert.deepEqual(await adapter.cancelEvent("event-1"), { externalEventId: "event-1", status: "cancelled" });
+});
+
+test("Google transport failures remain bounded and retry-safe", async () => {
+  const signals: AbortSignal[] = [];
+  const adapter = new GoogleCalendarAdapter(
+    { calendarId: "calendar@example.test", clientId: "client", clientSecret: "secret", refreshToken: "refresh" },
+    (async (_request: string | URL | Request, init?: RequestInit) => {
+      if (init?.signal instanceof AbortSignal) signals.push(init.signal);
+      throw new DOMException("timed out", "TimeoutError");
+    }) as typeof fetch,
+  );
+  await assert.rejects(adapter.freeBusy("2026-07-20T00:00:00Z", "2026-07-21T00:00:00Z"), BookingCalendarUnavailableError);
+  assert.equal(signals.length, 1);
 });

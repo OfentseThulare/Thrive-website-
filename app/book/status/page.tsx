@@ -14,6 +14,7 @@ export default async function BookingStatusPage() {
   if (!booking) notFound();
   const held = booking.state === "HELD" || booking.state === "PAYMENT_PENDING";
   const confirmed = booking.state === "CONFIRMED";
+  const paidNeedsReconciliation = booking.paymentState === "PAID" && !confirmed;
   const payment = paymentConfiguration();
   const earlyPerformanceRequired = new Date(booking.startsAt).getTime() < Date.now() + 7 * 24 * 60 * 60 * 1000;
   return (
@@ -29,6 +30,7 @@ export default async function BookingStatusPage() {
               ? "This time is reserved briefly, but it is not a confirmed appointment yet. Confirmation requires a valid PayFast notification and successful calendar confirmation."
               : "This page shows the current recorded state of your booking."}
         </p>
+        {paidNeedsReconciliation ? <div className="payment-reconciliation-alert" role="alert"><strong>Payment received, appointment not confirmed</strong><span>Please do not pay again. The practice must reconcile the payment and appointment before a session can be confirmed.</span></div> : null}
         <dl>
           <div><dt>Reference</dt><dd>{booking.publicReference}</dd></div>
           <div><dt>Service</dt><dd>{booking.serviceName}</dd></div>

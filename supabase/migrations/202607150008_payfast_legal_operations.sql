@@ -8,6 +8,18 @@ alter table public.booking_rate_limits
   add constraint booking_rate_limits_scope_allowed
   check (scope in ('services', 'availability', 'hold', 'status', 'release', 'payment'));
 
+alter table public.payments
+  add column reconciliation_required boolean not null default false,
+  add column reconciliation_reason text,
+  add column reconciled_at timestamptz,
+  add constraint payments_reconciliation_reason_allowed check (
+    reconciliation_reason is null or reconciliation_reason in ('booking_expired', 'booking_cancelled')
+  ),
+  add constraint payments_reconciliation_state_consistent check (
+    (reconciliation_required and reconciliation_reason is not null and reconciled_at is null)
+    or (not reconciliation_required and reconciliation_reason is null)
+  );
+
 create or replace function public.check_booking_rate_limit(p_scope text, p_fingerprint_hash text) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare window_size interval; declare maximum_requests integer; declare current_count integer;
@@ -109,6 +121,19 @@ begin
     v_new_expiry := v_booking.hold_expires_at;
     if v_payment.amount_cents <> v_booking.price_cents or v_payment.currency <> v_booking.currency
     then raise exception 'PAYMENT_SNAPSHOT_MISMATCH'; end if;
+    if not exists (
+      select 1 from public.payment_events pe
+      where pe.payment_id = v_payment.id
+        and pe.event_type in ('checkout.created', 'checkout.acceptance')
+        and pe.metadata ->> 'legal_version' = p_legal_version
+        and (pe.metadata ->> 'legal_accepted')::boolean is true
+        and coalesce((pe.metadata ->> 'early_performance_accepted')::boolean, false) = (p_early_performance_accepted is true)
+    ) then
+      insert into public.payment_events(payment_id, event_type, from_state, to_state, metadata)
+      values (v_payment.id, 'checkout.acceptance', v_payment.state, v_payment.state,
+        jsonb_build_object('legal_version', p_legal_version, 'legal_accepted', true,
+          'early_performance_accepted', p_early_performance_accepted is true, 'accepted_at', now()));
+    end if;
   else
     v_new_expiry := greatest(v_booking.hold_expires_at, now() + interval '30 minutes');
     insert into public.payments(
@@ -185,7 +210,11 @@ begin
 
   insert into public.webhook_receipts(provider, provider_event_id, payload_hash, signature_valid, processed_at)
   values ('payfast', p_pf_payment_id, p_payload_hash, true, now());
-  update public.payments set state = 'PAID', paid_at = now(), updated_at = now() where id = v_payment.id;
+  update public.payments set state = 'PAID', paid_at = now(), updated_at = now(),
+    reconciliation_required = v_booking.state in ('EXPIRED', 'CANCELLED'),
+    reconciliation_reason = case v_booking.state when 'EXPIRED' then 'booking_expired' when 'CANCELLED' then 'booking_cancelled' else null end,
+    reconciled_at = null
+  where id = v_payment.id;
   insert into public.payment_events(payment_id, event_type, from_state, to_state, provider_event_id, metadata)
   values (v_payment.id, 'itn.complete', v_payment.state, 'PAID', p_pf_payment_id, '{}'::jsonb);
   if v_booking.state = 'PAYMENT_PENDING' then
@@ -268,7 +297,11 @@ begin
   if v_from is null then return false; end if;
   if not ((v_from = 'PAID' and p_to_state = 'REFUND_PENDING') or (v_from = 'REFUND_PENDING' and p_to_state = 'REFUNDED'))
   then raise exception 'PAYMENT_STATE_TRANSITION_INVALID'; end if;
-  update public.payments set state = p_to_state, updated_at = now() where id = p_payment_id;
+  update public.payments set state = p_to_state, updated_at = now(),
+    reconciliation_required = case when p_to_state = 'REFUNDED' then false else reconciliation_required end,
+    reconciliation_reason = case when p_to_state = 'REFUNDED' then null else reconciliation_reason end,
+    reconciled_at = case when p_to_state = 'REFUNDED' then now() else reconciled_at end
+  where id = p_payment_id;
   insert into public.payment_events(payment_id, event_type, from_state, to_state, metadata)
   values (p_payment_id, 'refund.state_changed', v_from, p_to_state, '{}'::jsonb);
   return true;

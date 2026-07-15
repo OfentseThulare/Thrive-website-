@@ -9,12 +9,29 @@ test("payment SQL provides atomic snapshots, idempotency and late-payment safety
   assert.match(sql, /payment_events_provider_event_global_unique/);
   assert.match(sql, /payment\.received_after_release/);
   assert.match(sql, /requires_manual_reconciliation/);
+  assert.match(sql, /reconciliation_required = v_booking\.state in \('EXPIRED', 'CANCELLED'\)/);
+  assert.match(sql, /checkout\.acceptance/);
   assert.match(sql, /notification_outbox/);
   assert.match(sql, /current_session_is_aal2/);
   assert.match(sql, /booking_rate_limits_scope_allowed[\s\S]*?'payment'/);
   assert.doesNotMatch(sql, /create policy payments_finance_write/);
   assert.match(sql, /state = 'HELD' for update/);
   assert.doesNotMatch(sql.match(/create or replace function public\.release_booking_hold[\s\S]*?end; \$\$/)?.[0] ?? "", /PAYMENT_PENDING/);
+});
+
+test("late payment messaging and finance reconciliation queue are explicit", async () => {
+  const status = await readFile(new URL("../app/book/status/page.tsx", import.meta.url), "utf8");
+  const returned = await readFile(new URL("../app/payment/return/page.tsx", import.meta.url), "utf8");
+  const list = await readFile(new URL("../app/admin/(protected)/finance/payments/page.tsx", import.meta.url), "utf8");
+  const detail = await readFile(new URL("../app/admin/(protected)/finance/payments/[paymentId]/page.tsx", import.meta.url), "utf8");
+  for (const source of [status, returned]) {
+    assert.match(source, /Payment received, appointment not confirmed/);
+    assert.match(source, /do not pay again/i);
+  }
+  assert.match(list, /reconciliation_required/);
+  assert.match(list, /reconciliation=required/);
+  assert.match(detail, /Action required: paid booking not confirmed/);
+  assert.match(detail, /booking\.state/);
 });
 
 test("ITN authority is isolated from client routes and hashes receipts", async () => {

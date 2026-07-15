@@ -55,6 +55,8 @@ export class MockCalendarAdapter implements BookingCalendarAdapter {
 
 type FetchLike = typeof fetch;
 type GoogleConfig = { calendarId: string; clientId: string; clientSecret: string; refreshToken: string };
+const GOOGLE_OAUTH_TIMEOUT_MS = 5_000;
+const GOOGLE_CALENDAR_TIMEOUT_MS = 7_000;
 
 export class GoogleCalendarAdapter implements BookingCalendarAdapter {
   readonly name = "google" as const;
@@ -67,17 +69,21 @@ export class GoogleCalendarAdapter implements BookingCalendarAdapter {
   }
 
   private async accessToken() {
-    const response = await this.fetcher("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
-        refresh_token: this.config.refreshToken,
-        grant_type: "refresh_token",
-      }),
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await this.fetcher("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: this.config.clientId,
+          client_secret: this.config.clientSecret,
+          refresh_token: this.config.refreshToken,
+          grant_type: "refresh_token",
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(GOOGLE_OAUTH_TIMEOUT_MS),
+      });
+    } catch { throw new BookingCalendarUnavailableError(); }
     if (!response.ok) throw new BookingCalendarUnavailableError();
     const payload = await response.json() as { access_token?: string };
     if (!payload.access_token) throw new BookingCalendarUnavailableError();
@@ -86,11 +92,15 @@ export class GoogleCalendarAdapter implements BookingCalendarAdapter {
 
   private async request(path: string, init: RequestInit = {}, acceptedStatuses: readonly number[] = []) {
     const token = await this.accessToken();
-    const response = await this.fetcher(`https://www.googleapis.com/calendar/v3${path}`, {
-      ...init,
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...init.headers },
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await this.fetcher(`https://www.googleapis.com/calendar/v3${path}`, {
+        ...init,
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...init.headers },
+        cache: "no-store",
+        signal: AbortSignal.timeout(GOOGLE_CALENDAR_TIMEOUT_MS),
+      });
+    } catch { throw new BookingCalendarUnavailableError(); }
     if (!response.ok && !acceptedStatuses.includes(response.status)) throw new BookingCalendarUnavailableError();
     return response;
   }
