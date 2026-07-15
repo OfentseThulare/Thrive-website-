@@ -9,6 +9,21 @@ import { publicRoutes } from "../lib/site-routes.ts";
 const projectRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const routePaths = new Set(publicRoutes.map((route) => route.path));
 
+function relativeLuminance(hex: string) {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const [red, green, blue] = channels.map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function contrastRatio(first: string, second: string) {
+  const [lighter, darker] = [relativeLuminance(first), relativeLuminance(second)].sort(
+    (left, right) => right - left,
+  );
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function pageFileFor(route: (typeof publicRoutes)[number]) {
   if (route.path === "/") return path.join(projectRoot, "app/page.tsx");
   return path.join(projectRoot, "app", route.path.slice(1), "page.tsx");
@@ -104,4 +119,31 @@ test("coverage matrix accounts for every source heading and flags verification",
   for (const section of requiredSections) assert.ok(coverage.includes(section), `unmapped: ${section}`);
   assert.match(coverage, /Remaining Client Verification/);
   assert.doesNotMatch(coverage, /\|\s*Unaccounted\s*\|/i);
+});
+
+test("card kicker text uses an AA contrast accent token", async () => {
+  const css = await readFile(path.join(projectRoot, "app/globals.css"), "utf8");
+  const accentText = css.match(/--colour-coral-text:\s*(#[0-9a-f]{6})/i)?.[1];
+  const white = css.match(/--colour-white:\s*(#[0-9a-f]{6})/i)?.[1];
+  const cardKicker = css.match(/\.card-kicker\s*\{([\s\S]*?)\}/)?.[1] ?? "";
+
+  assert.ok(accentText && white);
+  assert.ok(contrastRatio(accentText, white) >= 4.5);
+  assert.match(cardKicker, /color:\s*var\(--colour-coral-text\)/);
+});
+
+test("footer grid has one four-column desktop definition and responsive collapse", async () => {
+  const css = await readFile(path.join(projectRoot, "app/globals.css"), "utf8");
+
+  assert.match(css, /\.footer-grid\s*\{[\s\S]*?grid-template-columns:\s*1\.35fr 0\.7fr 1fr 1fr/);
+  assert.doesNotMatch(css, /grid-template-columns:\s*1\.1fr 0\.8fr 1fr/);
+  assert.match(css, /@media \(max-width: 1080px\)[\s\S]*?\.footer-grid\s*\{[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.footer-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+});
+
+test("responsive image sizes follow the 1080px layout breakpoint", async () => {
+  const component = await readFile(path.join(projectRoot, "components/content-block.tsx"), "utf8");
+
+  assert.match(component, /sizes=.*max-width: 1080px/s);
+  assert.doesNotMatch(component, /max-width: 760px/);
 });

@@ -2,55 +2,41 @@ import "server-only";
 
 import { cache } from "react";
 
-import { pageContentSchema, type PageContent } from "./contracts";
+import {
+  resolvePublishedPage,
+  type PublishedPageRow,
+  type PublishedPageSource,
+  type PublishedVersionRow,
+} from "./published-page";
 import { seedPages } from "./seed";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type PageRow = {
-  slug: string;
-  published_version_id: string;
-};
-
-type VersionRow = {
-  snapshot: unknown;
-};
-
-export const getPublishedPage = cache(async function getPublishedPage(
-  slug: string,
-): Promise<PageContent | null> {
+export const getPublishedPage = cache(async function getPublishedPage(slug: string) {
   const supabase = await createServerSupabaseClient();
 
-  if (!supabase) {
-    return seedPages.get(slug) ?? null;
-  }
+  const source: PublishedPageSource | null = supabase
+    ? {
+        async getPublishedPage(pageSlug) {
+          const { data, error } = await supabase
+            .from("pages")
+            .select("slug,published_version_id")
+            .eq("slug", pageSlug)
+            .eq("status", "published")
+            .single<PublishedPageRow>();
 
-  const { data: page, error: pageError } = await supabase
-    .from("pages")
-    .select("slug,published_version_id")
-    .eq("slug", slug)
-    .eq("status", "published")
-    .single<PageRow>();
+          return { data, error: error ? { code: error.code } : null };
+        },
+        async getPublishedVersion(versionId) {
+          const { data, error } = await supabase
+            .from("page_versions")
+            .select("snapshot")
+            .eq("id", versionId)
+            .single<PublishedVersionRow>();
 
-  if (pageError) {
-    if (pageError.code === "PGRST116") return seedPages.get(slug) ?? null;
-    throw new Error(`Published page query failed: ${pageError.code}`);
-  }
+          return { data, error: error ? { code: error.code } : null };
+        },
+      }
+    : null;
 
-  const { data: version, error: versionError } = await supabase
-    .from("page_versions")
-    .select("snapshot")
-    .eq("id", page.published_version_id)
-    .single<VersionRow>();
-
-  if (versionError) {
-    throw new Error(`Published page version query failed: ${versionError.code}`);
-  }
-
-  const publishedPage = pageContentSchema.parse(version.snapshot);
-
-  if (publishedPage.slug !== page.slug || publishedPage.status !== "published") {
-    throw new Error("Published page snapshot does not match its route or publication state.");
-  }
-
-  return publishedPage;
+  return resolvePublishedPage({ slug, source, seedPages });
 });

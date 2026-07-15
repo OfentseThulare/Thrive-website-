@@ -41,7 +41,7 @@ export function ActionLink({
 
 function EditorialImage({
   image,
-  sizes = "(max-width: 760px) 100vw, 48vw",
+  sizes = "(max-width: 620px) calc(100vw - 32px), (max-width: 1080px) min(76vw, 580px), 48vw",
 }: {
   image: Extract<ContentBlock, { blockType: "editorial_split" }>["image"];
   sizes?: string;
@@ -85,7 +85,7 @@ export function ContentBlockView({ block }: { block: ContentBlock }) {
                 width={block.image.width}
                 height={block.image.height}
                 priority
-                sizes="(max-width: 760px) 88vw, 44vw"
+                sizes="(max-width: 620px) 78vw, (max-width: 1080px) min(78vw, 520px), 44vw"
                 style={{ objectPosition: toCssPosition(block.image.position) }}
               />
               {block.aside ? <figcaption>{block.aside}</figcaption> : null}

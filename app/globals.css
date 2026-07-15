@@ -6,6 +6,7 @@
   --colour-teal-200: #b8ded7;
   --colour-teal-100: #e8f5ef;
   --colour-coral: #d86f5f;
+  --colour-coral-text: #a84b3e;
   --colour-coral-soft: #f4d7ce;
   --colour-cream: #faf6ed;
   --colour-sand-100: #eee3d2;
@@ -562,7 +563,7 @@ figure {
 
 .card-kicker {
   margin: 0 0 9px;
-  color: var(--colour-coral) !important;
+  color: var(--colour-coral-text) !important;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -957,11 +958,6 @@ figure {
   color: var(--colour-ink);
 }
 
-.footer-grid {
-  grid-template-columns: 1.35fr 0.7fr 1fr 1fr;
-  gap: clamp(34px, 5vw, 70px);
-}
-
 .footer-about > p,
 .footer-scope > p:not(.eyebrow) {
   color: var(--colour-muted);
@@ -1081,8 +1077,8 @@ figure {
 .footer-grid {
   display: grid;
   align-items: start;
-  grid-template-columns: 1.1fr 0.8fr 1fr;
-  gap: 50px;
+  grid-template-columns: 1.35fr 0.7fr 1fr 1fr;
+  gap: clamp(34px, 5vw, 70px);
 }
 
 .site-footer nav {
@@ -1137,9 +1133,12 @@ figure {
     justify-self: center;
   }
 
-  .card-grid,
-  .footer-grid {
+  .card-grid {
     grid-template-columns: 1fr;
+  }
+
+  .footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .split-grid,
@@ -1257,6 +1256,10 @@ figure {
 
   .notice-inner {
     padding-left: 22px;
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
   }
 
   .cta-inner {
