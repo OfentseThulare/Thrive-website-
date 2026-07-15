@@ -6,17 +6,9 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 
 import { BrandMark } from "./brand-mark";
 
-const primaryLinks = [
-  { href: "/about", label: "About Renny" },
-  { href: "/services", label: "Services" },
-  { href: "/approach", label: "Our approach" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/resources", label: "Resources" },
-];
-
 const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function SiteHeader() {
+export function SiteHeader({ primaryLinks }: { primaryLinks: { href: string; label: string }[] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const menuButtonRef = useRef<HTMLButtonElement>(null);

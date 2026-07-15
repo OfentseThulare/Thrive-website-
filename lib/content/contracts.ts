@@ -37,6 +37,9 @@ export const safeHrefSchema = z
   .refine(isSafeHref, "Link must use a safe internal path or an approved external scheme");
 
 function isSafeLocalImageSource(value: string) {
+  if (/^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    return true;
+  }
   if (!/^\/images\/[A-Za-z0-9][A-Za-z0-9/_.-]*\.(avif|jpe?g|png|webp)$/i.test(value)) {
     return false;
   }
@@ -49,7 +52,7 @@ export const safeImageSourceSchema = z
   .trim()
   .min(1)
   .max(500)
-  .refine(isSafeLocalImageSource, "Image must use a safe local path under /images");
+  .refine(isSafeLocalImageSource, "Image must use a safe local path under /images or an approved CMS asset reference");
 
 const linkSchema = z.object({
   label: z.string().trim().min(1).max(80),
@@ -231,11 +234,19 @@ export const contentBlockSchema = z.discriminatedUnion("blockType", [
   callToActionBlockSchema,
 ]);
 
+export const pageSeoSchema = z.object({
+  title: z.string().trim().max(70).nullable().optional(),
+  description: z.string().trim().max(160).nullable().optional(),
+  canonicalPath: z.string().trim().max(180).nullable().optional(),
+  noIndex: z.boolean().optional(),
+});
+
 export const pageContentSchema = z.object({
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   title: z.string().trim().min(1).max(140),
   description: z.string().trim().min(1).max(320),
   status: z.enum(["draft", "published"]),
+  seo: pageSeoSchema.optional(),
   sections: z.array(contentBlockSchema).min(1),
 });
 

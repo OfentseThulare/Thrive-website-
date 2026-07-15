@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "16mb",
+    },
+  },
 };
 
 export default nextConfig;

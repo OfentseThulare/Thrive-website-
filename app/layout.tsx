@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 
-import { SiteFooter } from "@/components/site-footer";
-import { SiteHeader } from "@/components/site-header";
+import { SiteChrome } from "@/components/site-chrome";
+import { getPublishedNavigation } from "@/lib/content/navigation";
 import { getSiteUrl } from "@/lib/env";
 
 import "./globals.css";
@@ -51,16 +51,12 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const primaryLinks = await getPublishedNavigation();
   return (
     <html lang="en-ZA" className={`${sans.variable} ${serif.variable}`}>
       <body>
-        <a className="skip-link" href="#main-content">
-          Skip to content
-        </a>
-        <SiteHeader />
-        <main id="main-content">{children}</main>
-        <SiteFooter />
+        <SiteChrome primaryLinks={primaryLinks}>{children}</SiteChrome>
       </body>
     </html>
   );
