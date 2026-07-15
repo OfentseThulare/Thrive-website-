@@ -31,10 +31,13 @@ function RuleForm({ services, rule }: { services: ServiceOption[]; rule?: RuleRe
 
 export default async function AvailabilityPage() {
   const { supabase, editable } = await requireScheduleAccess(["owner", "scheduler", "auditor"]);
-  const [{ data: serviceData }, { data: ruleData }] = await Promise.all([
+  const [serviceResult, ruleResult] = await Promise.all([
     supabase.from("services").select("id,name").order("position"),
     supabase.from("availability_rules").select("*,services(name)").order("weekday").order("starts_at"),
   ]);
+  if (serviceResult.error || ruleResult.error) throw new Error("SCHEDULE_AVAILABILITY_LOAD_FAILED");
+  const serviceData = serviceResult.data;
+  const ruleData = ruleResult.data;
   const services = (serviceData ?? []) as ServiceOption[];
   const rules = (ruleData ?? []) as RuleRecord[];
   return <div className="admin-content">

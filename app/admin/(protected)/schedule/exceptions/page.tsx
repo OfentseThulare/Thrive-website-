@@ -26,10 +26,13 @@ function ExceptionForm({ services, exception }: { services: ServiceOption[]; exc
 
 export default async function ExceptionsPage() {
   const { supabase, editable } = await requireScheduleAccess(["owner", "scheduler", "auditor"]);
-  const [{ data: serviceData }, { data: exceptionData }] = await Promise.all([
+  const [serviceResult, exceptionResult] = await Promise.all([
     supabase.from("services").select("id,name").order("position"),
     supabase.from("availability_exceptions").select("*,services(name)").order("starts_at", { ascending: false }).limit(100),
   ]);
+  if (serviceResult.error || exceptionResult.error) throw new Error("SCHEDULE_EXCEPTIONS_LOAD_FAILED");
+  const serviceData = serviceResult.data;
+  const exceptionData = exceptionResult.data;
   const services = (serviceData ?? []) as ServiceOption[];
   const exceptions = (exceptionData ?? []) as ExceptionRecord[];
   return <div className="admin-content">

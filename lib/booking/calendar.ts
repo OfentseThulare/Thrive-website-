@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   BookingCalendarAdapter,
   BusyPeriod,
@@ -82,14 +84,14 @@ export class GoogleCalendarAdapter implements BookingCalendarAdapter {
     return payload.access_token;
   }
 
-  private async request(path: string, init: RequestInit = {}) {
+  private async request(path: string, init: RequestInit = {}, acceptedStatuses: readonly number[] = []) {
     const token = await this.accessToken();
     const response = await this.fetcher(`https://www.googleapis.com/calendar/v3${path}`, {
       ...init,
       headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...init.headers },
       cache: "no-store",
     });
-    if (!response.ok) throw new BookingCalendarUnavailableError();
+    if (!response.ok && !acceptedStatuses.includes(response.status)) throw new BookingCalendarUnavailableError();
     return response;
   }
 
@@ -124,9 +126,14 @@ export class GoogleCalendarAdapter implements BookingCalendarAdapter {
   }
 
   async createEvent(input: CalendarEventInput) {
+    const eventId = googleCalendarEventId(input.operationId);
     const response = await this.request(`/calendars/${encodeURIComponent(this.config.calendarId)}/events`, {
-      method: "POST", body: JSON.stringify(this.eventBody(input)),
-    });
+      method: "POST", body: JSON.stringify({ id: eventId, ...this.eventBody(input) }),
+    }, [409]);
+    if (response.status === 409) {
+      const existing = await this.request(`/calendars/${encodeURIComponent(this.config.calendarId)}/events/${eventId}`);
+      return normaliseGoogleEvent(await existing.json());
+    }
     return normaliseGoogleEvent(await response.json());
   }
   async updateEvent(externalEventId: string, input: CalendarEventInput) {
@@ -136,13 +143,17 @@ export class GoogleCalendarAdapter implements BookingCalendarAdapter {
     return normaliseGoogleEvent(await response.json());
   }
   async cancelEvent(externalEventId: string) {
-    await this.request(`/calendars/${encodeURIComponent(this.config.calendarId)}/events/${encodeURIComponent(externalEventId)}`, { method: "DELETE" });
+    await this.request(`/calendars/${encodeURIComponent(this.config.calendarId)}/events/${encodeURIComponent(externalEventId)}`, { method: "DELETE" }, [404]);
     return { externalEventId, status: "cancelled" as const };
   }
   async reconcile(externalEventId: string) {
     const response = await this.request(`/calendars/${encodeURIComponent(this.config.calendarId)}/events/${encodeURIComponent(externalEventId)}`);
     return normaliseGoogleEvent(await response.json());
   }
+}
+
+export function googleCalendarEventId(operationId: string) {
+  return `ttc${createHash("sha256").update("thrive-google-calendar-event:v1\0", "utf8").update(operationId, "utf8").digest("hex")}`;
 }
 
 function normaliseGoogleEvent(value: unknown): CalendarEventResult {

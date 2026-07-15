@@ -14,9 +14,9 @@ Use `BOOKING_CALENDAR_MODE=disabled` before launch. `mock` is deterministic and 
 
 ## Privacy and access
 
-The public form accepts full name, email and optional telephone only. Do not add diagnosis, cancer type, stage, treatment, symptoms, notes or questionnaire responses to this workflow. Booking access uses a random token stored only in a secure HttpOnly cookie. Postgres stores its SHA-256 hash. The public reference is not an access credential.
+The public form accepts full name, email and optional telephone only. Do not add diagnosis, cancer type, stage, treatment, symptoms, notes or questionnaire responses to this workflow. Booking access uses an opaque token stored only in a secure HttpOnly cookie. Postgres stores its SHA-256 hash. Legacy rows receive independent cryptographically random hashes, so an old booking UUID or public reference cannot be used as an access credential.
 
-Availability, status and contact pages use `Cache-Control: no-store`. Hold, status and release RPCs are callable only through the server-only booking client, so direct Supabase callers cannot bypass the Google FreeBusy check. A database-backed limiter stores only a secret-peppered SHA-256 network fingerprint. Platform firewall limits remain recommended as an additional layer before opening production traffic.
+Availability, status and contact pages use `Cache-Control: no-store`. Slot, hold, status and release RPCs are callable only through the server-only booking client, so direct Supabase callers cannot enumerate the schedule or bypass the Google FreeBusy check. A database-backed limiter stores only a secret-peppered SHA-256 network fingerprint. Platform firewall limits remain recommended as an additional layer before opening production traffic.
 
 Each hold lasts exactly 15 minutes. The browser retains one random UUID idempotency key while a selected slot is being submitted. The server derives an opaque access token with a domain-separated HMAC over that key. A lost-response retry and concurrent replay therefore receive the same credential without exposing the derivation secret to the browser. The private recovery RPC requires the matching token hash, returns no contact information, changes no state and is executable only by the server role.
 
@@ -26,9 +26,11 @@ All stored timestamps are UTC. PostgreSQL generates slots using `Africa/Johannes
 
 Scheduler accounts may manage services, weekly rules and exceptions at AAL1. An account holding the owner role must be at AAL2 for every schedule mutation, including direct RLS-protected writes and state transition RPCs. Adding a scheduler role to an owner does not bypass this requirement.
 
+Each booking stores immutable price and currency snapshots when the hold is created. Later service catalogue changes do not rewrite a client's agreed commercial terms. Consent replacement runs in one role-protected transaction, serialises concurrent activations and retains exactly one active version per purpose.
+
 ## Calendar recovery
 
-Google Calendar supplies external busy periods, while Postgres remains the booking source of truth. If FreeBusy cannot be verified, the public API offers no times. A hold does not create an event. Task 5 will invoke idempotent event operations only after the paid confirmation transition. Calendar failures must enter `CALENDAR_FAILED` or remain pending; they never claim `CONFIRMED`. Use the protected Calendar health and booking audit views for reconciliation.
+Google Calendar supplies external busy periods, while Postgres remains the booking source of truth. If FreeBusy cannot be verified, the public API offers no times. A hold does not create an event. Event creation uses a deterministic Google-compatible provider ID derived from the operation ID. A retry after a lost response reconciles the existing provider event on conflict, while repeated cancellation treats an already missing event as cancelled. Task 5 will invoke these operations only after the paid confirmation transition. Calendar failures must enter `CALENDAR_FAILED` or remain pending; they never claim `CONFIRMED`. Use the protected Calendar health and booking audit views for reconciliation.
 
 ## Local verification
 

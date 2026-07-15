@@ -77,12 +77,13 @@ export async function deleteAvailabilityExceptionAction(formData: FormData) {
 export async function addConsentVersionAction(formData: FormData) {
   const input = consentInputSchema.parse(values(formData));
   const { supabase } = await schedulerClient();
-  if (input.active) {
-    const { error: retireError } = await supabase.from("consent_versions").update({ active: false, retired_at: new Date().toISOString() }).eq("purpose", "booking").eq("active", true);
-    if (retireError) throw new Error("CONSENT_RETIRE_FAILED");
-  }
-  const { error } = await supabase.from("consent_versions").insert({ purpose: "booking", version: input.version, wording: input.wording, active: input.active, effective_at: new Date(`${input.effectiveAt}:00+02:00`).toISOString() });
-  if (error) throw new Error("CONSENT_SAVE_FAILED");
+  const { data, error } = await supabase.rpc("save_booking_consent_version", {
+    p_version: input.version,
+    p_wording: input.wording,
+    p_active: input.active,
+    p_effective_at: new Date(`${input.effectiveAt}:00+02:00`).toISOString(),
+  });
+  if (error || !data) throw new Error("CONSENT_SAVE_FAILED");
   revalidatePath("/admin/schedule/consents"); revalidatePath("/book");
 }
 

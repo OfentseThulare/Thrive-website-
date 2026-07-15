@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(34);
+select plan(42);
 
 select set_config('app.cms_fixture_bypass', 'on', true);
 insert into auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -74,6 +74,12 @@ select is((select count(*)::integer from public.recover_booking_hold('83000000-0
 select is((select count(*)::integer from public.get_booking_status(repeat('a',64))), 1, 'recovery leaves the stable access credential valid');
 select is((select count(*)::integer from public.recover_booking_hold('83000000-0000-0000-0000-000000000001', repeat('d',64))), 0, 'recovery rejects a mismatched access credential');
 select is((select count(*)::integer from public.get_booking_status(repeat('d',64))), 0, 'a mismatched credential gains no booking access');
+update public.services set price_cents = 150000 where id = '81000000-0000-0000-0000-000000000001';
+select is((select price_cents from public.get_booking_status(repeat('a',64))), 125000, 'booking status retains the commercial snapshot after catalogue pricing changes');
+select throws_ok(
+  $$update public.bookings set price_cents = 150000 where public_reference = 'TTC-AAAAAAAAAAAA'$$,
+  'P0001', 'BOOKING_SNAPSHOT_IMMUTABLE', 'a booking commercial snapshot cannot be changed later'
+);
 select throws_ok(
   $$select * from public.create_booking_hold(
     '81000000-0000-0000-0000-000000000002',
@@ -119,8 +125,11 @@ select is((select count(*)::integer from public.list_booking_slots('81000000-000
 select ok(not has_table_privilege('anon', 'public.bookings', 'insert'), 'anonymous users have no direct booking insert grant');
 select ok(not has_function_privilege('anon', 'public.create_booking_hold(uuid,timestamptz,text,text,text,uuid,text,uuid,text)', 'execute'), 'anonymous users cannot bypass the server calendar boundary');
 select ok(not has_function_privilege('anon', 'public.expire_stale_booking_holds()', 'execute'), 'anonymous users cannot invoke the internal expiry function');
+select ok(not has_function_privilege('anon', 'public.list_booking_slots(uuid,date,date)', 'execute'), 'anonymous users cannot invoke the slot catalogue directly');
+select ok(has_function_privilege('service_role', 'public.list_booking_slots(uuid,date,date)', 'execute'), 'the server booking boundary can invoke the slot catalogue');
 select matches(pg_get_functiondef('public.list_booking_slots(uuid,date,date)'::regprocedure), 'Africa/Johannesburg', 'slot SQL uses named time-zone conversion');
 select ok(exists(select 1 from pg_constraint where conrelid = 'public.bookings'::regclass and conname = 'bookings_active_time_exclusion' and contype = 'x'), 'the active cross-service exclusion constraint exists');
+select ok(exists(select 1 from pg_indexes where schemaname = 'public' and indexname = 'consent_versions_one_active_per_purpose' and indexdef like '%WHERE active%'), 'one active consent per purpose is enforced by a partial unique index');
 
 select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000001","role":"authenticated","aal":"aal1"}', true);
 set local role authenticated;
@@ -129,6 +138,10 @@ select is((with changed as (update public.services set name = 'Forbidden owner u
 select throws_ok(
   $$select public.transition_booking_state('89000000-0000-0000-0000-000000000001','CANCELLED')$$,
   'P0001', 'BOOKING_NOT_AUTHORISED', 'the transition RPC blocks an owner at AAL1'
+);
+select throws_ok(
+  $$select public.save_booking_consent_version('test-2', 'I agree to the replacement booking contact processing wording.', now(), true)$$,
+  'P0001', 'BOOKING_NOT_AUTHORISED', 'the consent replacement RPC blocks an owner at AAL1'
 );
 reset role;
 
@@ -149,6 +162,11 @@ select lives_ok(
   $$select public.transition_booking_state('89000000-0000-0000-0000-000000000001','CANCELLED')$$,
   'the transition RPC admits a scheduler at AAL1'
 );
+select lives_ok(
+  $$select public.save_booking_consent_version('test-3', 'I agree to the new booking contact processing wording.', now(), true)$$,
+  'the consent replacement RPC admits a scheduler at AAL1'
+);
+select is((select count(*)::integer from public.consent_versions where purpose = 'booking' and active), 1, 'consent replacement leaves exactly one active booking consent');
 reset role;
 
 select set_config('request.jwt.claims', '{"sub":"84000000-0000-0000-0000-000000000003","role":"authenticated","aal":"aal1"}', true);

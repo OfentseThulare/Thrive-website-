@@ -18,6 +18,15 @@ test("booking writes are narrow RPCs with hashed access and overlap locking", as
   assert.doesNotMatch(sql, /grant (insert|update|delete) on public\.bookings to anon/);
 });
 
+test("legacy booking access is random and slot enumeration remains server only", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(sql, /set access_token_hash = encode\(gen_random_bytes\(32\), 'hex'\) where access_token_hash is null/);
+  assert.doesNotMatch(sql, /set access_token_hash\s*=\s*encode\(digest\([^;]*(?:\.id|id::text)/i);
+  assert.match(sql, /revoke all on function public\.list_booking_slots\(uuid, date, date\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.list_booking_slots\(uuid, date, date\) to service_role/);
+  assert.doesNotMatch(sql, /grant execute on function public\.list_booking_slots[^;]*to (?:anon|authenticated)/);
+});
+
 test("slot and hold RPCs enforce horizon, consent, exact slots, expiry and ZAR service data", async () => {
   const sql = await readFile(migrationUrl, "utf8");
   for (const requirement of ["Africa/Johannesburg", "local_today + 90", "BOOKING_CONSENT_UNAVAILABLE", "list_booking_slots", "expire_stale_booking_holds", "currency = 'ZAR'", "exclusion_violation", "check_booking_rate_limit", "recover_booking_hold"]) assert.match(sql, new RegExp(requirement.replace(/[+]/g, "\\+")));
@@ -26,6 +35,19 @@ test("slot and hold RPCs enforce horizon, consent, exact slots, expiry and ZAR s
   assert.match(sql, /p_client_name !~ '\\S'/);
   assert.match(sql, /p_client_email !~\* '[^']*\\\.[^']*'/);
   assert.doesNotMatch(sql, /p_client_name !~ '\\\\S'/);
+});
+
+test("bookings retain immutable ZAR commercial snapshots", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(sql, /add column if not exists price_cents integer/);
+  assert.match(sql, /add column if not exists currency char\(3\)/);
+  assert.match(sql, /set price_cents = s\.price_cents, currency = s\.currency/);
+  assert.match(sql, /bookings_price_snapshot_nonnegative check \(price_cents >= 0\)/);
+  assert.match(sql, /bookings_currency_snapshot_zar check \(currency = 'ZAR'\)/);
+  assert.match(sql, /insert into public\.bookings\([^)]*price_cents, currency\)[\s\S]*service_record\.price_cents, service_record\.currency/);
+  assert.match(sql, /return query select b\.public_reference[\s\S]*b\.price_cents, b\.currency from public\.bookings/);
+  assert.match(sql, /create trigger bookings_snapshot_immutable/);
+  assert.match(sql, /BOOKING_SNAPSHOT_IMMUTABLE/);
 });
 
 test("lost hold responses recover only the stable expected access credential", async () => {
@@ -54,6 +76,20 @@ test("schedule mutations require owner MFA at the database boundary", async () =
     assert.match(sql, new RegExp(`create policy ${policy}[\\s\\S]*?public\\.can_mutate_schedule\\(\\)`));
   }
   assert.match(sql, /if not public\.can_mutate_schedule\(\) then raise exception 'BOOKING_NOT_AUTHORISED'/);
+});
+
+test("active booking consent replacement is atomic and role protected", async () => {
+  const [sql, actions] = await Promise.all([
+    readFile(migrationUrl, "utf8"),
+    readFile(new URL("../app/admin/schedule-actions.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(sql, /create unique index consent_versions_one_active_per_purpose[\s\S]*where active/);
+  assert.match(sql, /create function public\.save_booking_consent_version/);
+  assert.match(sql, /save_booking_consent_version[\s\S]*public\.can_mutate_schedule\(\)/);
+  assert.match(sql, /save_booking_consent_version[\s\S]*pg_advisory_xact_lock[\s\S]*update public\.consent_versions[\s\S]*insert into public\.consent_versions/);
+  assert.match(actions, /\.rpc\("save_booking_consent_version"/);
+  assert.doesNotMatch(actions, /\.from\("consent_versions"\)\s*\.update/);
+  assert.doesNotMatch(actions, /\.from\("consent_versions"\)\s*\.insert/);
 });
 
 test("public booking boundary contains no health information fields or false confirmation", async () => {
@@ -100,6 +136,25 @@ test("scheduler interfaces support service updates and full rule and exception m
   assert.match(availabilityPage, /Rule is active/);
   assert.match(availabilityPage, /Remove rule/);
   assert.match(exceptionsPage, /Remove exception/);
+});
+
+test("every scheduler page fails explicitly when its backing query fails", async () => {
+  const pages = await Promise.all([
+    ["services", "SCHEDULE_SERVICES_LOAD_FAILED"],
+    ["availability", "SCHEDULE_AVAILABILITY_LOAD_FAILED"],
+    ["exceptions", "SCHEDULE_EXCEPTIONS_LOAD_FAILED"],
+    ["bookings", "SCHEDULE_BOOKINGS_LOAD_FAILED"],
+    ["bookings/[bookingId]", "SCHEDULE_BOOKING_DETAIL_LOAD_FAILED"],
+    ["calendar", "SCHEDULE_CALENDAR_EVENTS_LOAD_FAILED"],
+    ["consents", "SCHEDULE_CONSENTS_LOAD_FAILED"],
+  ].map(async ([page, failure]) => ({
+    source: await readFile(new URL(`../app/admin/(protected)/schedule/${page}/page.tsx`, import.meta.url), "utf8"),
+    failure,
+  })));
+  for (const page of pages) {
+    assert.match(page.source, /\b(?:error|\w+Result\.error)\b/);
+    assert.match(page.source, new RegExp(page.failure));
+  }
 });
 
 test("privileged booking credentials remain isolated to server-only modules", async () => {

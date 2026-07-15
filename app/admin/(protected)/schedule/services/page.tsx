@@ -31,7 +31,8 @@ function ServiceForm({ service }: { service?: ServiceRecord }) {
 
 export default async function ServicesPage() {
   const { supabase, editable } = await requireScheduleAccess(["owner", "scheduler", "auditor"]);
-  const { data } = await supabase.from("services").select("*").order("position");
+  const { data, error } = await supabase.from("services").select("*").order("position");
+  if (error) throw new Error("SCHEDULE_SERVICES_LOAD_FAILED");
   const services = (data ?? []) as ServiceRecord[];
   return <div className="admin-content">
     <div className="admin-page-heading"><div><p className="eyebrow">Johannesburg scheduler</p><h1>Services</h1><p>Duration, buffer and ZAR price are trusted from the database at booking time.</p></div></div>

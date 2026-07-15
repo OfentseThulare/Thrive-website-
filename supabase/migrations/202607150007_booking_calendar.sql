@@ -1,10 +1,24 @@
 begin;
 
 alter table public.services add column if not exists buffer_minutes integer not null default 0 check (buffer_minutes between 0 and 120);
-alter table public.bookings add column if not exists access_token_hash text, add column if not exists blocked_until timestamptz;
-update public.bookings set access_token_hash = encode(digest(id::text, 'sha256'), 'hex'), blocked_until = ends_at where access_token_hash is null or blocked_until is null;
-alter table public.bookings alter column access_token_hash set not null, alter column blocked_until set not null;
-alter table public.bookings add constraint bookings_access_token_hash_format check (access_token_hash ~ '^[a-f0-9]{64}$'), add constraint bookings_blocked_until_valid check (blocked_until >= ends_at);
+alter table public.bookings
+  add column if not exists access_token_hash text,
+  add column if not exists blocked_until timestamptz,
+  add column if not exists price_cents integer,
+  add column if not exists currency char(3);
+update public.bookings set access_token_hash = encode(gen_random_bytes(32), 'hex') where access_token_hash is null;
+update public.bookings set blocked_until = ends_at where blocked_until is null;
+update public.bookings b set price_cents = s.price_cents, currency = s.currency from public.services s where b.service_id = s.id and (b.price_cents is null or b.currency is null);
+alter table public.bookings
+  alter column access_token_hash set not null,
+  alter column blocked_until set not null,
+  alter column price_cents set not null,
+  alter column currency set not null;
+alter table public.bookings
+  add constraint bookings_access_token_hash_format check (access_token_hash ~ '^[a-f0-9]{64}$'),
+  add constraint bookings_blocked_until_valid check (blocked_until >= ends_at),
+  add constraint bookings_price_snapshot_nonnegative check (price_cents >= 0),
+  add constraint bookings_currency_snapshot_zar check (currency = 'ZAR');
 alter table public.bookings drop constraint if exists bookings_tstzrange_excl;
 alter table public.bookings add constraint bookings_active_time_exclusion exclude using gist (tstzrange(starts_at, blocked_until, '[)') with &&) where (state in ('HELD', 'PAYMENT_PENDING', 'PAID', 'CALENDAR_SYNC_PENDING', 'CONFIRMED'));
 create unique index bookings_access_token_hash_idx on public.bookings(access_token_hash);
@@ -33,6 +47,41 @@ language sql stable security definer set search_path = '' as $$
 $$;
 revoke all on function public.can_mutate_schedule() from public;
 grant execute on function public.can_mutate_schedule() to authenticated;
+
+with ranked_active_consents as (
+  select id, row_number() over (partition by purpose order by effective_at desc, created_at desc, id desc) as active_rank
+  from public.consent_versions where active
+)
+update public.consent_versions c set
+  active = false,
+  retired_at = greatest(now(), c.effective_at + interval '1 microsecond')
+from ranked_active_consents ranked
+where c.id = ranked.id and ranked.active_rank > 1;
+create unique index consent_versions_one_active_per_purpose on public.consent_versions(purpose) where active;
+
+create function public.save_booking_consent_version(
+  p_version text, p_wording text, p_effective_at timestamptz, p_active boolean
+) returns uuid language plpgsql security definer set search_path = '' as $$
+declare new_consent_id uuid;
+begin
+  if not public.can_mutate_schedule() then raise exception 'BOOKING_NOT_AUTHORISED'; end if;
+  if p_version is null or char_length(trim(p_version)) not between 1 and 30
+    or p_wording is null or char_length(trim(p_wording)) not between 20 and 10000
+    or p_effective_at is null then raise exception 'BOOKING_CONSENT_INVALID'; end if;
+  if p_active then
+    perform pg_advisory_xact_lock(hashtextextended('consent-version:booking', 0));
+    update public.consent_versions set
+      active = false,
+      retired_at = greatest(now(), effective_at + interval '1 microsecond')
+    where purpose = 'booking' and active;
+  end if;
+  insert into public.consent_versions(purpose, version, wording, active, effective_at)
+  values ('booking', trim(p_version), trim(p_wording), p_active, p_effective_at)
+  returning id into new_consent_id;
+  return new_consent_id;
+end; $$;
+revoke all on function public.save_booking_consent_version(text, text, timestamptz, boolean) from public, anon;
+grant execute on function public.save_booking_consent_version(text, text, timestamptz, boolean) to authenticated;
 
 create function public.check_booking_rate_limit(p_scope text, p_fingerprint_hash text) returns boolean
 language plpgsql security definer set search_path = '' as $$
@@ -78,6 +127,14 @@ begin
   return new;
 end; $$;
 create trigger bookings_validate_state_transition before update of state on public.bookings for each row execute function public.enforce_booking_state_transition();
+
+create function public.prevent_booking_snapshot_mutation() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.service_id is distinct from old.service_id or new.price_cents is distinct from old.price_cents or new.currency is distinct from old.currency
+  then raise exception 'BOOKING_SNAPSHOT_IMMUTABLE'; end if;
+  return new;
+end; $$;
+create trigger bookings_snapshot_immutable before update of service_id, price_cents, currency on public.bookings for each row execute function public.prevent_booking_snapshot_mutation();
 
 create function public.expire_stale_booking_holds() returns integer language plpgsql security definer set search_path = '' as $$
 declare changed integer;
@@ -135,8 +192,8 @@ begin
     and not exists (select 1 from public.bookings b where b.state in ('HELD', 'PAYMENT_PENDING', 'PAID', 'CALENDAR_SYNC_PENDING', 'CONFIRMED') and tstzrange(b.starts_at, b.blocked_until, '[)') && tstzrange(c.starts_at, c.blocked_until, '[)'))
   order by c.starts_at;
 end; $$;
-revoke all on function public.list_booking_slots(uuid, date, date) from public;
-grant execute on function public.list_booking_slots(uuid, date, date) to anon, authenticated;
+revoke all on function public.list_booking_slots(uuid, date, date) from public, anon, authenticated;
+grant execute on function public.list_booking_slots(uuid, date, date) to service_role;
 
 create function public.create_booking_hold(
   p_service_id uuid, p_starts_at timestamptz, p_client_name text, p_client_email text, p_client_telephone text,
@@ -162,8 +219,8 @@ begin
   if not exists (select 1 from public.list_booking_slots(p_service_id, local_date, local_date) s where s.starts_at = p_starts_at and s.ends_at = p_starts_at + make_interval(mins => service_record.duration_minutes))
   then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end if;
   begin
-    insert into public.bookings(public_reference, service_id, starts_at, ends_at, blocked_until, state, hold_expires_at, client_name, client_email, client_telephone, idempotency_key, access_token_hash)
-    values (p_public_reference, p_service_id, p_starts_at, p_starts_at + make_interval(mins => service_record.duration_minutes), p_starts_at + make_interval(mins => service_record.duration_minutes + service_record.buffer_minutes), 'HELD', now() + interval '15 minutes', trim(p_client_name), lower(trim(p_client_email)), nullif(trim(p_client_telephone), ''), p_idempotency_key, p_access_token_hash)
+    insert into public.bookings(public_reference, service_id, starts_at, ends_at, blocked_until, state, hold_expires_at, client_name, client_email, client_telephone, idempotency_key, access_token_hash, price_cents, currency)
+    values (p_public_reference, p_service_id, p_starts_at, p_starts_at + make_interval(mins => service_record.duration_minutes), p_starts_at + make_interval(mins => service_record.duration_minutes + service_record.buffer_minutes), 'HELD', now() + interval '15 minutes', trim(p_client_name), lower(trim(p_client_email)), nullif(trim(p_client_telephone), ''), p_idempotency_key, p_access_token_hash, service_record.price_cents, service_record.currency)
     returning id, bookings.hold_expires_at into new_booking_id, hold_expires_at;
   exception when exclusion_violation or unique_violation then raise exception 'BOOKING_SLOT_UNAVAILABLE'; end;
   insert into public.booking_consents values (new_booking_id, consent_id, now());
@@ -192,7 +249,7 @@ returns table(public_reference text, service_name text, starts_at timestamptz, e
 language plpgsql security definer set search_path = '' as $$
 begin
   perform public.expire_stale_booking_holds(); if p_access_token_hash !~ '^[a-f0-9]{64}$' then return; end if;
-  return query select b.public_reference, s.name, b.starts_at, b.ends_at, b.state, b.hold_expires_at, s.price_cents, s.currency from public.bookings b join public.services s on s.id = b.service_id where b.access_token_hash = p_access_token_hash;
+  return query select b.public_reference, s.name, b.starts_at, b.ends_at, b.state, b.hold_expires_at, b.price_cents, b.currency from public.bookings b join public.services s on s.id = b.service_id where b.access_token_hash = p_access_token_hash;
 end; $$;
 revoke all on function public.get_booking_status(text) from public, anon, authenticated; grant execute on function public.get_booking_status(text) to service_role;
 
