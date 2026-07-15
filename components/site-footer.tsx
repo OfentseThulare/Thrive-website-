@@ -24,6 +24,13 @@ const serviceLinks = [
   },
 ];
 
+const legalLinks = [
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/cancellation-refunds", label: "Cancellations and refunds" },
+  { href: "/medical-disclaimer", label: "Medical disclaimer" },
+];
+
 export function SiteFooter() {
   return (
     <footer className="site-footer">
@@ -63,10 +70,14 @@ export function SiteFooter() {
             treatment from your oncology and medical team.
           </p>
         </div>
+        <nav aria-label="Legal">
+          <p>Legal</p>
+          {legalLinks.map((link) => <Link key={link.href} href={link.href}>{link.label}</Link>)}
+        </nav>
       </div>
       <div className="shell footer-bottom">
         <p>© 2026 Thrive Through Cancer, a division of Inheritance Academy.</p>
-        <p>Legal and privacy pages will be published with the secure booking service.</p>
+        <p>Legal drafts last updated 15/07/2026. Client approval is required before live payment.</p>
       </div>
     </footer>
   );

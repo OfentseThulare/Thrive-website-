@@ -29,6 +29,7 @@ export type BookingServerEnvironment = z.infer<typeof bookingServerSchema>;
 type EnvironmentSource = Record<string, string | undefined>;
 
 const bookingCalendarModeSchema = z.enum(["disabled", "google", "mock"]);
+const payFastModeSchema = z.enum(["disabled", "sandbox", "live"]);
 
 export type BookingCalendarEnvironment =
   | { mode: "disabled" }
@@ -39,6 +40,18 @@ export type BookingCalendarEnvironment =
       clientId: string;
       clientSecret: string;
       refreshToken: string;
+    };
+
+export type PayFastEnvironment =
+  | { mode: "disabled" }
+  | {
+      mode: "sandbox" | "live";
+      merchantId: string;
+      merchantKey: string;
+      passphrase: string;
+      processUrl: string;
+      validateUrl: string;
+      legalVersion: string;
     };
 
 export function parsePublicSupabaseEnvironment(
@@ -157,5 +170,33 @@ export function parseBookingCalendarEnvironment(
     clientId: values.GOOGLE_CLIENT_ID,
     clientSecret: values.GOOGLE_CLIENT_SECRET,
     refreshToken: values.GOOGLE_REFRESH_TOKEN,
+  };
+}
+
+export function parsePayFastEnvironment(
+  source: EnvironmentSource,
+  runtimeOverride?: "development" | "test" | "production",
+): PayFastEnvironment {
+  const runtime = runtimeEnvironmentSchema.parse(runtimeOverride ?? source.NODE_ENV ?? "development");
+  const mode = payFastModeSchema.parse(source.PAYFAST_MODE?.trim() || "disabled");
+  if (mode === "disabled") return { mode };
+  if (runtime === "production" && mode !== "live") {
+    throw new Error("PayFast sandbox mode is forbidden in production.");
+  }
+  const values = requireServerEnvironment(
+    ["PAYFAST_MERCHANT_ID", "PAYFAST_MERCHANT_KEY", "PAYFAST_PASSPHRASE", "PAYMENT_LEGAL_VERSION"] as const,
+    source,
+  );
+  if (source.PAYMENT_LEGAL_APPROVED?.trim() !== "true" || !/^[0-9]{2}\/[0-9]{2}\/[0-9]{4}-[a-z0-9.-]{1,40}$/.test(values.PAYMENT_LEGAL_VERSION)) {
+    throw new Error("Approved, versioned payment legal terms are required before PayFast can be enabled.");
+  }
+  return {
+    mode,
+    merchantId: values.PAYFAST_MERCHANT_ID,
+    merchantKey: values.PAYFAST_MERCHANT_KEY,
+    passphrase: values.PAYFAST_PASSPHRASE,
+    processUrl: mode === "live" ? "https://www.payfast.co.za/eng/process" : "https://sandbox.payfast.co.za/eng/process",
+    validateUrl: mode === "live" ? "https://www.payfast.co.za/eng/query/validate" : "https://sandbox.payfast.co.za/eng/query/validate",
+    legalVersion: values.PAYMENT_LEGAL_VERSION,
   };
 }

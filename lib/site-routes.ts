@@ -22,4 +22,8 @@ export const publicRoutes = [
   { path: "/pricing", slug: "pricing", priority: 0.8 },
   { path: "/book", slug: "book", priority: 0.9 },
   { path: "/resources", slug: "resources", priority: 0.7 },
+  { path: "/privacy", slug: "privacy", priority: 0.5 },
+  { path: "/terms", slug: "terms", priority: 0.5 },
+  { path: "/cancellation-refunds", slug: "cancellation-refunds", priority: 0.5 },
+  { path: "/medical-disclaimer", slug: "medical-disclaimer", priority: 0.5 },
 ] as const;

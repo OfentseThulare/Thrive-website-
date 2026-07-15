@@ -3,6 +3,7 @@ import {
   type PageContent,
   type PageContentInput,
 } from "./contracts.ts";
+import { legalRawPages } from "./legal-seed.ts";
 
 const rennySeated = {
   src: "/images/renny-portrait-seated.jpg",
@@ -854,7 +855,7 @@ const rawPages: PageContentInput[] = [
         ],
         notes: [
           "The brief does not confirm VAT treatment. Displayed amounts must be reconfirmed before live payment is enabled.",
-          "No payment is taken on this version of the site.",
+          "PayFast remains unavailable unless production credentials, approved legal versions and the secure server integration are all configured.",
         ],
       },
       {
@@ -871,10 +872,10 @@ const rawPages: PageContentInput[] = [
       },
       {
         blockType: "notice",
-        heading: "Payment methods are planned, not yet live",
+        heading: "Payment methods remain carefully controlled",
         body: [
-          "The approved plan is to use PayFast hosted checkout and a defined direct EFT process. Credit or debit card details will never be entered directly into this website.",
-          "Cancellation, refund, VAT, package and EFT reservation rules must be approved before payment opens. The later payment task will publish those rules and real legal pages together.",
+          "When live payment is approved and configured, PayFast hosted checkout is the only online payment route. Credit or debit card details are never entered directly into this website.",
+          "The legal pages are published as transparent drafts, but client-specific cancellation, refund, VAT, package and EFT rules still require approval. EFT remains disabled until formal banking and reconciliation instructions are approved.",
         ],
         tone: "status",
       },
@@ -888,34 +889,34 @@ const rawPages: PageContentInput[] = [
   },
   {
     slug: "book",
-    title: "Prepare to Book",
+    title: "Book a Session",
     description:
-      "Understand the planned secure booking process and prepare for a first Thrive Through Cancer session.",
+      "Choose an available session and understand each secure booking, payment and calendar confirmation stage.",
     status: "published",
     sections: [
       {
         blockType: "hero",
         eyebrow: "Prepare to book",
-        heading: "A calm first step, without pretending the calendar is live",
+        heading: "A calm, private first step",
         body:
-          "Secure scheduling and payment are being completed. This page explains the planned process and helps you decide which session may fit, but it does not reserve or confirm an appointment.",
+          "The secure booking workspace below shows live options only when Supabase, availability and Google Calendar checks are configured. Viewing this page does not reserve or confirm an appointment, and a held time is never presented as confirmed.",
         primaryAction: { label: "Compare services", href: "/services" },
         secondaryAction: { label: "View pricing", href: "/pricing" },
         image: reflectionStillLife,
-        aside: "No health details, payment or calendar information is collected here.",
+        aside: "Share contact details, never diagnosis or treatment information.",
         tone: "mist",
       },
       {
         blockType: "process",
-        eyebrow: "The planned secure flow",
-        heading: "What booking will look like",
-        introduction: "These steps describe the approved flow that will be activated only after it is connected and tested.",
+        eyebrow: "The secure flow",
+        heading: "How booking works",
+        introduction: "Each stage fails closed when its required calendar, database, legal or payment configuration is unavailable.",
         steps: [
           { title: "Choose a service", body: "Select health coaching, psycho-oncology counselling or cancer prevention coaching." },
           { title: "Choose a session", body: "Select an available Foundation Session, Follow Up Session or approved package option." },
           { title: "Choose a time", body: "View real availability in Africa/Johannesburg time and hold a suitable calendar slot." },
           { title: "Share contact details", body: "Provide only the minimum needed for the booking, such as name, email and optional telephone number. No diagnosis or treatment details will be requested." },
-          { title: "Complete payment", body: "Use PayFast hosted checkout or the approved EFT process when payment is required." },
+          { title: "Complete payment", body: "Use PayFast hosted checkout when it is configured. EFT is not offered until approved banking and reconciliation rules are published." },
           { title: "Receive confirmation", body: "A booking is confirmed only after payment and calendar checks succeed. A browser return page alone will never claim success." },
         ],
       },
@@ -928,16 +929,16 @@ const rawPages: PageContentInput[] = [
         items: [
           { title: "What support would help?", body: "Think about whether you want practical habit support, emotional space, or help deciding between the two." },
           { title: "What feels most present?", body: "You do not need to prepare your full health history. A simple sense of what you want from the conversation is enough." },
-          { title: "What is your availability?", body: "The future calendar will show real times in Africa/Johannesburg time. Consider the privacy and energy you need around a virtual session." },
+          { title: "What is your availability?", body: "Available times are shown in Africa/Johannesburg time. Consider the privacy and energy you need around a virtual session." },
           { title: "What questions do you have?", body: "You can ask about scope, session structure, fees and fit before sharing any sensitive information." },
         ],
       },
       {
         blockType: "notice",
-        heading: "No booking has been made",
+        heading: "A hold is not a confirmed appointment",
         body: [
-          "This page is informational. It does not collect personal or health information, place a calendar hold, take payment or confirm a session.",
-          "Live booking will remain disabled until availability rules, cancellation terms, contact details, Supabase persistence, Google Calendar and PayFast have been configured and verified end to end.",
+          "The booking workspace asks only for the minimum contact details needed to hold a selected time. It has no health-information field and will not place a hold unless database availability, active consent and Google Calendar checks all succeed.",
+          "A booking becomes confirmed only after a valid PayFast server notification for the exact local amount and a successful calendar event. If payment is disabled, the status page says so plainly and no payment is taken.",
         ],
         tone: "status",
       },
@@ -1012,6 +1013,7 @@ const rawPages: PageContentInput[] = [
       },
     ],
   },
+  ...legalRawPages,
 ];
 
 const parsedPages: PageContent[] = rawPages.map((page) => pageContentSchema.parse(page));

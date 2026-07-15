@@ -58,6 +58,7 @@ export async function getBookingStatus(): Promise<BookingStatus | null> {
     holdExpiresAt: row.hold_expires_at ? String(row.hold_expires_at) : null,
     priceCents: Number(row.price_cents),
     currency: "ZAR",
+    paymentState: row.payment_state ? row.payment_state as BookingStatus["paymentState"] : null,
   };
 }
 

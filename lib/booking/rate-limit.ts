@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getBookingServerEnvironment } from "@/lib/env";
 
-export type BookingRateLimitScope = "services" | "availability" | "hold" | "status" | "release";
+export type BookingRateLimitScope = "services" | "availability" | "hold" | "status" | "release" | "payment";
 
 function requestAddress(request: Request) {
   const forwarded = request.headers.get("x-vercel-forwarded-for")

@@ -6,6 +6,8 @@ import { getCmsIdentity } from "@/lib/cms/auth";
 import { CmsMfaRequiredError, requireCmsRole } from "@/lib/cms/permissions";
 import { availabilityExceptionInputSchema, availabilityRuleInputSchema, bookingTransitionSchema, consentInputSchema, scheduleRecordIdSchema, serviceInputSchema } from "@/lib/booking/schemas";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createBookingAdminClient } from "@/lib/supabase/booking-admin";
+import { finaliseCalendarForPaidBooking } from "@/lib/payment/server";
 
 function values(formData: FormData) { return Object.fromEntries(formData.entries()); }
 
@@ -93,4 +95,25 @@ export async function transitionBookingAction(formData: FormData) {
   const { data, error } = await supabase.rpc("transition_booking_state", { p_booking_id: input.bookingId, p_to_state: input.toState });
   if (error || data !== true) throw new Error("BOOKING_TRANSITION_FAILED");
   revalidatePath(`/admin/schedule/bookings/${input.bookingId}`); revalidatePath("/admin/schedule/bookings");
+}
+
+export async function retryCalendarSyncAction(formData: FormData) {
+  const input = scheduleRecordIdSchema.parse({ id: formData.get("bookingId") });
+  const { supabase } = await schedulerClient();
+  const { data, error } = await supabase.rpc("retry_failed_calendar_sync", { p_booking_id: input.id });
+  if (error || data !== true) throw new Error("CALENDAR_RETRY_QUEUE_FAILED");
+  const admin = createBookingAdminClient();
+  const { data: booking, error: bookingError } = await admin.from("bookings")
+    .select("id,public_reference,starts_at,ends_at,calendar_event_id,services(name)")
+    .eq("id", input.id).maybeSingle();
+  if (bookingError || !booking) throw new Error("CALENDAR_RETRY_LOAD_FAILED");
+  const service = booking.services as unknown as {name:string};
+  await finaliseCalendarForPaidBooking({
+    booking_id: booking.id, booking_reference: booking.public_reference,
+    starts_at: booking.starts_at, ends_at: booking.ends_at,
+    service_name: service.name, calendar_event_id: booking.calendar_event_id,
+    calendar_eligible: true,
+  });
+  revalidatePath(`/admin/schedule/bookings/${input.id}`);
+  revalidatePath("/admin/schedule/bookings");
 }

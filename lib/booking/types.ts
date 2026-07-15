@@ -24,6 +24,7 @@ export type BookingStatus = {
   holdExpiresAt: string | null;
   priceCents: number;
   currency: "ZAR";
+  paymentState: "CREATED" | "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "REFUND_PENDING" | "REFUNDED" | null;
 };
 
 export type CalendarEventInput = {

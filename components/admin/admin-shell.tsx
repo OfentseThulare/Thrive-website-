@@ -22,6 +22,7 @@ export function AdminShell({ identity, children, mfaRequired }: { identity: CmsI
     { href: "/admin/schedule/bookings", label: "Bookings", show: hasCmsRole(identity.roles, ["owner", "scheduler", "finance", "auditor"]) },
     { href: "/admin/schedule/consents", label: "Booking consent", show: hasCmsRole(identity.roles, ["owner", "scheduler", "auditor"]) },
     { href: "/admin/schedule/calendar", label: "Calendar health", show: hasCmsRole(identity.roles, ["owner", "scheduler", "auditor"]) },
+    { href: "/admin/finance/payments", label: "Payments", show: hasCmsRole(identity.roles, ["owner", "finance", "auditor"]) },
   ];
 
   return (

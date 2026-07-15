@@ -1,0 +1,24 @@
+import { notFound } from "next/navigation";
+
+import { changeRefundStateAction } from "@/app/admin/finance-actions";
+import { adminFormat } from "@/lib/booking/admin";
+import { formatZar } from "@/lib/booking/time";
+import { requireFinanceAccess } from "@/lib/payment/admin";
+
+export default async function PaymentDetailPage({ params }: { params: Promise<{paymentId:string}> }) {
+  const { paymentId } = await params;
+  const { supabase, editable } = await requireFinanceAccess();
+  const [paymentResult, eventsResult] = await Promise.all([
+    supabase.from("payments").select("id,booking_id,provider,provider_reference,amount_cents,currency,state,paid_at,created_at,updated_at,bookings(public_reference)").eq("id", paymentId).maybeSingle(),
+    supabase.from("payment_events").select("id,event_type,from_state,to_state,provider_event_id,occurred_at").eq("payment_id", paymentId).order("occurred_at", { ascending: false }),
+  ]);
+  if (paymentResult.error || eventsResult.error) throw new Error("PAYMENT_DETAIL_LOAD_FAILED");
+  if (!paymentResult.data) notFound();
+  const payment = paymentResult.data;
+  const booking = payment.bookings as unknown as {public_reference:string};
+  const providerEventIds = (eventsResult.data ?? []).flatMap((event) => event.provider_event_id ? [event.provider_event_id] : []);
+  const receiptsResult = providerEventIds.length ? await supabase.from("webhook_receipts").select("id,provider_event_id,payload_hash,signature_valid,processed_at,processing_error,received_at").in("provider_event_id", providerEventIds) : { data: [], error: null };
+  if (receiptsResult.error) throw new Error("PAYMENT_RECEIPTS_LOAD_FAILED");
+  const nextRefundState = payment.state === "PAID" ? "REFUND_PENDING" : payment.state === "REFUND_PENDING" ? "REFUNDED" : null;
+  return <div className="admin-content"><div className="admin-page-heading"><div><p className="eyebrow">{booking.public_reference}</p><h1>Payment reconciliation</h1><p>{formatZar(payment.amount_cents)} through {payment.provider}</p></div><span className="admin-status admin-status-neutral">{payment.state.replaceAll("_", " ")}</span></div><section className="admin-panel"><h2>Immutable attempt</h2><dl className="admin-definition-list"><div><dt>Merchant reference</dt><dd>{payment.provider_reference || "Not assigned"}</dd></div><div><dt>Created</dt><dd>{adminFormat(payment.created_at)}</dd></div><div><dt>Paid</dt><dd>{payment.paid_at ? adminFormat(payment.paid_at) : "Not verified"}</dd></div></dl><p className="admin-security-note">Refund states are operational records. Complete the provider refund separately, verify it, then update the recorded state. No card data is available here.</p>{editable && nextRefundState ? <form action={changeRefundStateAction} className="admin-inline-form"><input type="hidden" name="paymentId" value={payment.id}/><input type="hidden" name="toState" value={nextRefundState}/><button className="admin-button admin-button-primary" type="submit">Mark {nextRefundState.replaceAll("_", " ").toLowerCase()}</button></form> : null}</section><section className="admin-panel"><h2>Payment events</h2>{eventsResult.data?.length ? <ul className="admin-activity-list">{eventsResult.data.map((event) => <li key={event.id}><span className="admin-status admin-status-neutral">{event.to_state || event.event_type}</span><strong>{event.event_type}</strong><time>{adminFormat(event.occurred_at)}</time></li>)}</ul> : <div className="admin-empty"><strong>No events</strong></div>}</section><section className="admin-panel"><h2>Webhook receipts</h2>{receiptsResult.data?.length ? <ul className="admin-activity-list">{receiptsResult.data.map((receipt) => <li key={receipt.id}><span className="admin-status admin-status-neutral">{receipt.signature_valid ? "signature valid" : "rejected"}</span><strong>Hash {receipt.payload_hash.slice(0, 12)}…</strong><time>{adminFormat(receipt.received_at)}</time></li>)}</ul> : <div className="admin-empty"><strong>No matching receipt</strong><p>A return-page visit is not a payment receipt.</p></div>}</section></div>;
+}

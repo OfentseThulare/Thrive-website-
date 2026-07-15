@@ -3,6 +3,7 @@ import {
   parseSiteUrl,
   parseBookingCalendarEnvironment,
   parseBookingServerEnvironment,
+  parsePayFastEnvironment,
   requireServerEnvironment,
 } from "./schema";
 
@@ -31,4 +32,8 @@ export function getBookingCalendarEnvironment() {
 
 export function getBookingServerEnvironment() {
   return parseBookingServerEnvironment(process.env);
+}
+
+export function getPayFastEnvironment() {
+  return parsePayFastEnvironment(process.env);
 }

@@ -30,7 +30,7 @@ function pageFileFor(route: (typeof publicRoutes)[number]) {
 }
 
 test("every approved public route has a page, seed content and sitemap entry", async () => {
-  assert.equal(publicRoutes.length, 11);
+  assert.equal(publicRoutes.length, 15);
 
   for (const route of publicRoutes) {
     await access(pageFileFor(route));
@@ -89,13 +89,14 @@ test("public copy excludes unsupported statistics, fabricated quotation marks an
   assert.doesNotMatch(copy, /[—–]/);
 });
 
-test("booking content remains informational and avoids health data collection", () => {
+test("booking content distinguishes a page visit, a hold and health data collection", () => {
   const booking = seedPages.get("book");
   assert.ok(booking);
   const copy = JSON.stringify(booking);
 
   assert.match(copy, /does not reserve or confirm an appointment/i);
-  assert.match(copy, /does not collect personal or health information/i);
+  assert.match(copy, /minimum contact details/i);
+  assert.match(copy, /no health-information field/i);
   assert.doesNotMatch(copy, /type=["'](?:date|datetime-local|email|tel)/i);
 });
 
