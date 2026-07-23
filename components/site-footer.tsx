@@ -77,7 +77,7 @@ export function SiteFooter() {
       </div>
       <div className="shell footer-bottom">
         <p>© 2026 Thrive Through Cancer, a division of Inheritance Academy.</p>
-        <p>Legal drafts last updated 15/07/2026. Client approval is required before live payment.</p>
+        <p>Cancer and Psycho-Oncology Coaching and Counselling.</p>
       </div>
     </footer>
   );

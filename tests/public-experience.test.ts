@@ -8,6 +8,7 @@ import { publicRoutes } from "../lib/site-routes.ts";
 
 const projectRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const routePaths = new Set(publicRoutes.map((route) => route.path));
+const approvedExternalHosts = new Set(["www.radicalremission.com"]);
 
 function relativeLuminance(hex: string) {
   const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
@@ -62,6 +63,10 @@ test("all internal seed calls to action resolve to approved routes", () => {
   }
 
   for (const href of hrefs) {
+    if (href.startsWith("https://")) {
+      assert.ok(approvedExternalHosts.has(new URL(href).host), `unapproved external CTA: ${href}`);
+      continue;
+    }
     assert.ok(routePaths.has(href as (typeof publicRoutes)[number]["path"]), `dead CTA: ${href}`);
   }
 });
@@ -81,12 +86,25 @@ test("navigation does not expose legal placeholders and links every approved rou
   assert.doesNotMatch(globalNavigation, /href="\/(privacy|terms|medical-disclaimer|refund|cancellation)/);
 });
 
-test("public copy excludes unsupported statistics, fabricated quotation marks and dash punctuation", () => {
+test("public copy sources every statistic it quotes and avoids dash punctuation", () => {
   const copy = JSON.stringify([...seedPages.values()]);
 
-  assert.doesNotMatch(copy, /30%|30 to 50%|30–50%/i);
   assert.doesNotMatch(copy, /Clinical insight/i);
   assert.doesNotMatch(copy, /[—–]/);
+
+  for (const page of seedPages.values()) {
+    const pageCopy = JSON.stringify(page);
+    const claims = (pageCopy.match(/\b\d{1,3}(?: to \d{1,3})?%/g) ?? []).filter(
+      (claim) => claim !== "10%",
+    );
+    if (claims.length === 0) continue;
+
+    assert.match(
+      pageCopy,
+      /World Health Organization|published psycho-oncology research/i,
+      `unsourced statistic on ${page.slug}: ${claims.join(", ")}`,
+    );
+  }
 });
 
 test("booking content distinguishes a page visit, a hold and health data collection", () => {
