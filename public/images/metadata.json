@@ -3,36 +3,36 @@
   "reviewDate": "15/07/2026",
   "assets": [
     {
-      "path": "/images/renny-portrait-seated.jpg",
+      "path": "/images/renny-portrait-window.jpg",
       "assetType": "client-supplied portrait",
       "originalSourceUrl": null,
-      "originalSourcePath": "/Users/rhonniemanana/Downloads/IMG_6339.heic",
+      "originalSourcePath": "docs/image-sources/renny-portrait-window-source.png",
       "creator": "Unknown, client confirmation required",
       "provider": "Client supplied",
       "downloadDate": null,
       "licenceUrl": null,
-      "assetIdentifier": "IMG_6339.heic",
-      "altText": "Renny smiling while seated beside a large window",
+      "assetIdentifier": "Cancer Coaching Website Final Draft-3 (3).pdf page 8",
+      "altText": "Renny smiling in a sun hat, seated beside a window overlooking the coast",
       "decorative": false,
-      "focalPoint": "Renny's face, centre upper third",
-      "crop": "Square or portrait crop",
-      "usageRestrictions": "Use only to identify Renny and Thrive Through Cancer. Confirm photographer credit and website publication permission before production approval."
+      "focalPoint": "Renny's face, centre",
+      "crop": "Square crop",
+      "usageRestrictions": "Use only to identify Renny and Thrive Through Cancer. Supplied by the client under \"Images to use\". Confirm photographer credit and website publication permission before production approval."
     },
     {
-      "path": "/images/renny-portrait-standing.jpg",
+      "path": "/images/renny-portrait-outdoors.jpg",
       "assetType": "client-supplied portrait",
       "originalSourceUrl": null,
-      "originalSourcePath": "/Users/rhonniemanana/Downloads/IMG_0354.JPG",
+      "originalSourcePath": "docs/image-sources/renny-portrait-outdoors-source.png",
       "creator": "Unknown, client confirmation required",
       "provider": "Client supplied",
       "downloadDate": null,
       "licenceUrl": null,
-      "assetIdentifier": "IMG_0354.JPG",
-      "altText": "Renny standing outdoors in a patterned dress",
+      "assetIdentifier": "Cancer Coaching Website Final Draft-3 (3).pdf page 7",
+      "altText": "Renny standing outdoors in a patterned outfit",
       "decorative": false,
       "focalPoint": "Renny's face, upper centre",
       "crop": "Portrait crop",
-      "usageRestrictions": "Use only to identify Renny and Thrive Through Cancer. Confirm photographer credit and website publication permission before production approval."
+      "usageRestrictions": "Use only to identify Renny and Thrive Through Cancer. Supplied by the client under \"Images to use\". Confirm photographer credit and website publication permission before production approval."
     },
     {
       "path": "/images/stock-reflection.webp",

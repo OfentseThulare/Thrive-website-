@@ -6,18 +6,18 @@ import {
 import { legalRawPages } from "./legal-seed.ts";
 
 const rennySeated = {
-  src: "/images/renny-portrait-seated.jpg",
-  alt: "Renny smiling while seated beside a large window",
-  width: 3628,
-  height: 3628,
+  src: "/images/renny-portrait-window.jpg",
+  alt: "Renny smiling in a sun hat, seated beside a window overlooking the coast",
+  width: 2048,
+  height: 2048,
   position: "centre" as const,
 };
 
 const rennyStanding = {
-  src: "/images/renny-portrait-standing.jpg",
-  alt: "Renny standing outdoors in a patterned dress",
-  width: 1033,
-  height: 1600,
+  src: "/images/renny-portrait-outdoors.jpg",
+  alt: "Renny standing outdoors in a patterned outfit",
+  width: 827,
+  height: 1280,
   position: "top" as const,
 };
 
@@ -174,7 +174,6 @@ const rawPages: PageContentInput[] = [
         body:
           "Living with cancer does not have to be a struggle, you have it in you to THRIVE. Through our virtual coaching practice, we empower you to take control of your health from the comfort of your home.",
         primaryAction: { label: "Book a Cancer Coaching Session", href: "/book" },
-        secondaryAction: { label: "Meet Renny", href: "/about" },
         image: rennySeated,
         aside: "A division of Inheritance Academy.",
       },
@@ -242,38 +241,33 @@ const rawPages: PageContentInput[] = [
         ],
       },
       {
-        blockType: "comparison",
-        eyebrow: "Work with us",
-        heading: "Coaching vs. Psycho-Oncology counselling",
+        blockType: "feature_list",
+        eyebrow: "How we coach you",
+        heading: "Five disciplines behind every session",
         introduction:
-          "While coaching focuses on lifestyle changes and thriving in the present and future, psycho-oncology counselling addresses the emotional, mental, and behavioural aspects of coping with cancer. Together, they provide comprehensive support for your healing journey.",
-        columns: [
+          "Our art and science of coaching is rooted in Functional Medicine principles, positive psychology, mind-body medicine, behavioural change science, and neuroscience to help you achieve optimal well-being.",
+        tone: "mist",
+        layout: "stack",
+        items: [
           {
-            title: "Coaching",
-            body: "Focuses on lifestyle changes and thriving in the present and future.",
-            points: [
-              "Identification of lifestyle changes to propel healing",
-              "Medical research and advocacy",
-              "Personalised support to enhance adherence to treatment plans",
-            ],
-            link: {
-              label: "Explore Health Coaching",
-              href: "/services/cancer-health-coaching",
-            },
+            title: "Functional Medicine",
+            body: "Addresses the root causes of disease, considering genetic, environmental, and lifestyle factors.",
           },
           {
-            title: "Psycho-Oncology counselling",
-            body:
-              "Addresses the emotional, mental, and behavioural aspects of coping with cancer.",
-            points: [
-              "Process emotions and reduce distress",
-              "Cope with changes in body image and function",
-              "Navigate relationship challenges",
-            ],
-            link: {
-              label: "Explore Psycho-Oncology Counselling",
-              href: "/services/psycho-oncology-counselling",
-            },
+            title: "Positive Psychology’s PERMA model",
+            body: "Positive Emotions, Engagement, Relationships, Meaning, and Achievement, fostering emotional well-being.",
+          },
+          {
+            title: "Behavioural change science",
+            body: "Helping clients adopt sustainable health habits.",
+          },
+          {
+            title: "Neuroscience techniques",
+            body: "Leveraging the brain’s ability to rewire for health and resilience.",
+          },
+          {
+            title: "Mind-body medicine",
+            body: "Strategies including breathwork, visualisation, grounding, energy work and meditation.",
           },
         ],
       },
@@ -283,40 +277,13 @@ const rawPages: PageContentInput[] = [
         heading: "We empower you to approach healing with confidence",
         body: [
           "Cancer may bring uncertainty, but vibrant life after diagnosis is possible. Our approach integrates the 12 PEMS Conditioning Gems, Functional Medicine Coaching, and insights from the Radical Remission Project to guide clients toward optimal health in order to thrive beyond cancer.",
-          "Our art and science of coaching is rooted in Functional Medicine principles, positive psychology, mind-body medicine, behavioural change science, and neuroscience to help you achieve optimal well-being.",
+          "Working together includes identifying the lifestyle changes that propel healing, medical research and advocacy, accompaniment to medical appointments if needed, and personalised support to enhance adherence to your treatment plan.",
+          "Every client is unique, and so is their path to healing. Let’s create a plan that works for you.",
         ],
         image: coachingDesk,
         imageSide: "left",
         action: { label: "Explore our approach", href: "/approach" },
         tone: "cream",
-      },
-      {
-        blockType: "pricing",
-        eyebrow: "Session pricing",
-        heading: "Session pricing",
-        plans: [
-          {
-            name: "Foundation Session",
-            duration: "3 hours",
-            price: "R1 785",
-            body: "An extended first session to understand your priorities and shape your plan.",
-          },
-          {
-            name: "Follow-up Session",
-            duration: "1 hour",
-            price: "R700",
-            body: "Ongoing support to review progress and decide on practical next steps.",
-          },
-          {
-            name: "12-Session Package",
-            duration: "12 sessions",
-            price: "10% discount",
-            body: "A package of twelve sessions, offered at a 10% discount.",
-          },
-        ],
-        notes: [
-          "We recognise that financial concerns may arise during treatment. If financial hardship is a barrier, we invite you to pay what you can afford. If you can pay in full, your contribution helps us expand our services to those in need.",
-        ],
       },
       {
         blockType: "call_to_action",
