@@ -97,7 +97,7 @@ test("standing portrait content dimensions match the served JPEG", async () => {
   const aboutPage = seedPages.get("about");
   const standingHero = aboutPage?.sections.find(
     (section) =>
-      section.blockType === "hero" && section.image.src === "/images/renny-portrait-outdoors.jpg",
+      section.blockType === "hero" && section.image.src === "/images/renny-portrait-standing.jpg",
   );
 
   assert.ok(standingHero && standingHero.blockType === "hero");

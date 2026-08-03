@@ -223,8 +223,8 @@ export function ContentBlockView({
               <h2>{block.heading}</h2>
             </div>
             <div className="faq-list">
-              {block.items.map((item) => (
-                <details key={item.question}>
+              {block.items.map((item, index) => (
+                <details key={item.question} open={index === 0}>
                   <summary>{item.question}</summary>
                   <p>{item.answer}</p>
                 </details>

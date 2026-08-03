@@ -6,18 +6,18 @@ import {
 import { legalRawPages } from "./legal-seed.ts";
 
 const rennySeated = {
-  src: "/images/renny-portrait-window.jpg",
-  alt: "Renny smiling in a sun hat, seated beside a window overlooking the coast",
-  width: 2048,
-  height: 2048,
+  src: "/images/renny-portrait-seated.jpg",
+  alt: "Renny smiling while seated beside a large window",
+  width: 3628,
+  height: 3628,
   position: "centre" as const,
 };
 
 const rennyStanding = {
-  src: "/images/renny-portrait-outdoors.jpg",
-  alt: "Renny standing outdoors in a patterned outfit",
-  width: 827,
-  height: 1280,
+  src: "/images/renny-portrait-standing.jpg",
+  alt: "Renny standing outdoors in a patterned dress",
+  width: 1033,
+  height: 1600,
   position: "top" as const,
 };
 
@@ -178,16 +178,48 @@ const rawPages: PageContentInput[] = [
         aside: "A division of Inheritance Academy.",
       },
       {
-        blockType: "introduction",
-        eyebrow: "About us",
-        heading: "Facing a cancer diagnosis?",
-        body: [
-          "If you’ve been diagnosed with cancer, you may feel overwhelmed and uncertain about the future. Cancer affects not only your physical health but also your emotional and mental well-being.",
-          "Are you undergoing treatment? The challenges of cancer can create distress in many aspects of life, especially your emotional and mental health.",
-          "Are you caring for someone with cancer? The journey can bring anxiety and stress to the entire family.",
-          "We understand. But living with cancer doesn’t have to be a struggle, you have it in you to THRIVE. Let us support and guide you on your journey. We believe that a high quality of life is possible during and after treatment because true health lies within you.",
+        blockType: "card_collection",
+        eyebrow: "Start here",
+        heading: "Where are you in your journey?",
+        tone: "cream",
+        cards: [
+          {
+            title: "Newly diagnosed",
+            body:
+              "If you’ve been diagnosed with cancer, you may feel overwhelmed and uncertain about the future. Cancer affects not only your physical health but also your emotional and mental well-being.",
+            link: {
+              label: "Psycho-Oncology Counselling",
+              href: "/services/psycho-oncology-counselling",
+            },
+          },
+          {
+            title: "In treatment",
+            body:
+              "The challenges of cancer can create distress in many aspects of life, especially your emotional and mental health. We help you find the motivation from within to stay committed and consistent with your treatment and healing plan.",
+            link: {
+              label: "Cancer Health Coaching",
+              href: "/services/cancer-health-coaching",
+            },
+          },
+          {
+            title: "Life after treatment",
+            body:
+              "Support continues through survivorship and beyond, as you reintegrate into daily life after treatment and build habits that protect your long-term health.",
+            link: {
+              label: "Cancer Prevention Coaching",
+              href: "/services/cancer-prevention-coaching",
+            },
+          },
+          {
+            title: "Caring for someone",
+            body:
+              "Are you caring for someone with cancer? The journey can bring anxiety and stress to the entire family.",
+            link: {
+              label: "Psycho-Oncology Counselling",
+              href: "/services/psycho-oncology-counselling",
+            },
+          },
         ],
-        align: "centre",
       },
       {
         blockType: "editorial_split",
@@ -201,44 +233,6 @@ const rawPages: PageContentInput[] = [
         imageSide: "right",
         action: { label: "Read more about Renny", href: "/about" },
         tone: "white",
-      },
-      {
-        blockType: "card_collection",
-        eyebrow: "How we work together",
-        heading: "Our services",
-        tone: "mist",
-        cards: [
-          {
-            kicker: "Health Coaching",
-            title: "Cancer Health Coaching",
-            body:
-              "Our coaching program is designed to help you make sustainable lifestyle changes that support healing and well-being. We partner with you to develop a personalised health plan.",
-            link: {
-              label: "Explore Health Coaching",
-              href: "/services/cancer-health-coaching",
-            },
-          },
-          {
-            kicker: "Counselling",
-            title: "Psycho-Oncology Counselling",
-            body:
-              "Emotional and psychological support at every stage, pre-diagnosis, during treatment, survivorship, and beyond.",
-            link: {
-              label: "Explore Psycho-Oncology Counselling",
-              href: "/services/psycho-oncology-counselling",
-            },
-          },
-          {
-            kicker: "Prevention",
-            title: "Cancer Prevention Coaching",
-            body:
-              "Prevention is key to longevity. We use neuroscience-backed techniques to help clients build habits that last.",
-            link: {
-              label: "Explore Cancer Prevention Coaching",
-              href: "/services/cancer-prevention-coaching",
-            },
-          },
-        ],
       },
       {
         blockType: "feature_list",
@@ -286,10 +280,42 @@ const rawPages: PageContentInput[] = [
         tone: "cream",
       },
       {
+        blockType: "faq",
+        eyebrow: "Common questions",
+        heading: "What to expect",
+        items: [
+          {
+            question: "Is coaching a replacement for my cancer treatment?",
+            answer:
+              "No. Our methods complement traditional cancer treatments. We integrate the 10 Radical Remission healing factors, the 12 PEMS Conditioning Gems and Functional Medicine coaching principles to provide practical, science-backed lifestyle changes alongside the care your medical team provides.",
+          },
+          {
+            question: "What is the difference between coaching and psycho-oncology counselling?",
+            answer:
+              "Coaching focuses on lifestyle changes and thriving in the present and future: identifying the changes that propel healing, medical research and advocacy, and personalised support to enhance adherence to your treatment plan. Psycho-oncology counselling addresses the emotional, mental and behavioural aspects of coping with cancer: processing emotions and reducing distress, coping with changes in body image and function, navigating relationships, and reintegrating into daily life after treatment. Together they provide comprehensive support for your healing journey.",
+          },
+          {
+            question: "Where do sessions take place?",
+            answer:
+              "Ours is a virtual coaching practice, so you take part from the comfort of your home. Renny can also accompany you to medical appointments if that would help.",
+          },
+          {
+            question: "How long is a session?",
+            answer:
+              "The first Foundation Session is three hours, so there is time to understand your priorities and shape your plan. Follow-up sessions are one hour.",
+          },
+          {
+            question: "What does it cost, and what if I cannot afford it?",
+            answer:
+              "A Foundation Session is R1 785 and a follow-up session is R700. A package of twelve sessions is offered at a 10% discount. We recognise that financial concerns may arise during treatment. If financial hardship is a barrier, we invite you to pay what you can afford.",
+          },
+        ],
+      },
+      {
         blockType: "call_to_action",
         heading: "We’re here to support you",
         body:
-          "Partner with us and let’s help you THRIVE through cancer and beyond.",
+          "We understand. But living with cancer doesn’t have to be a struggle, you have it in you to THRIVE. We believe that a high quality of life is possible during and after treatment because true health lies within you. Partner with us and let’s help you THRIVE through cancer and beyond.",
         action: { label: "Book a session today", href: "/book" },
       },
     ],
